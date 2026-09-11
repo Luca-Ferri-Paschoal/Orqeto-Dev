@@ -1,0 +1,67 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "Orqeto Dev",
+	"version": "1.0.0",
+	"identifier": "com.orqeto.dev",
+	"build": {
+		"beforeDevCommand": "npm run dev:web",
+		"devUrl": "http://localhost:1420",
+		"beforeBuildCommand": "npm run build:web",
+		"frontendDist": "../dist"
+	},
+	"app": {
+		"windows": [
+			{
+				"label": "main",
+				"title": "Orqeto Dev",
+				"width": 620,
+				"height": 640,
+				"minWidth": 420,
+				"minHeight": 500,
+				"resizable": true,
+				"fullscreen": false,
+				"dragDropEnabled": true
+			}
+		],
+		"security": {
+			"capabilities": [
+				"default"
+			]
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": [
+			"nsis"
+		],
+		"icon": [
+			"icons/icon.ico"
+		],
+		"windows": {
+			"nsis": {
+				"installMode": "currentUser",
+				"installerHooks": "./windows/hooks.nsh",
+				"installerIcon": "icons/icon.ico",
+				"uninstallerIcon": "icons/icon.ico",
+				"languages": [
+					"PortugueseBR",
+					"English"
+				],
+				"displayLanguageSelector": false,
+				"compression": "lzma"
+			},
+			"allowDowngrades": true
+		},
+		"publisher": "Orqeto",
+		"resources": {
+			"../integrations/vscode/orqeto-dev-vscode.vsix": "vscode/orqeto-dev-vscode.vsix"
+		}
+	},
+	"plugins": {
+		"sql": {
+			"preload": [
+				"sqlite:orqeto-dev.db"
+			]
+		}
+	}
+}

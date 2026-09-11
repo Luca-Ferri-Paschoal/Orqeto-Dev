@@ -1,0 +1,16 @@
+# Orqeto Dev project ignore rules
+#
+# The application has no implicit ignore list. Only rules declared in this
+# file are excluded from recursive context collection and Smart Patch Root
+# Resolution when this project is selected as the root folder.
+# Syntax follows .gitignore semantics.
+
+.git/
+.lint-batch/
+node_modules/
+dist/
+build/
+coverage/
+src-tauri/target/
+integrations/vscode/dist/
+*.vsix

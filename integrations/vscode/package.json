@@ -1,0 +1,80 @@
+{
+	"name": "orqeto-dev-vscode",
+	"displayName": "Orqeto Dev",
+	"description": "Integra o Explorer do VS Code com o Orqeto Dev.",
+	"version": "1.0.0",
+	"publisher": "orqeto",
+	"engines": {
+		"vscode": "^1.100.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"main": "./dist/extension.js",
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"contributes": {
+		"commands": [
+			{
+				"command": "orqetoDev.sendToContext",
+				"title": "Enviar para Orqeto Dev",
+				"enablement": "orqetoDev.isRunning"
+			},
+			{
+				"command": "orqetoDev.removeFromContext",
+				"title": "Remover do contexto Orqeto",
+				"enablement": "orqetoDev.isRunning"
+			},
+			{
+				"command": "orqetoDev.openFolder",
+				"title": "Abrir no Orqeto Dev",
+				"enablement": "orqetoDev.isRunning"
+			}
+		],
+		"menus": {
+			"explorer/context": [
+				{
+					"command": "orqetoDev.sendToContext",
+					"when": "orqetoDev.isRunning && resourceScheme == file",
+					"group": "orqeto@1"
+				},
+				{
+					"command": "orqetoDev.removeFromContext",
+					"when": "orqetoDev.isRunning && resourceScheme == file",
+					"group": "orqeto@2"
+				},
+				{
+					"command": "orqetoDev.openFolder",
+					"when": "orqetoDev.isRunning && resourceScheme == file && explorerResourceIsFolder",
+					"group": "orqeto@3"
+				}
+			],
+			"commandPalette": [
+				{
+					"command": "orqetoDev.sendToContext",
+					"when": "orqetoDev.isRunning"
+				},
+				{
+					"command": "orqetoDev.removeFromContext",
+					"when": "orqetoDev.isRunning"
+				},
+				{
+					"command": "orqetoDev.openFolder",
+					"when": "orqetoDev.isRunning"
+				}
+			]
+		}
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"package": "npm run build && vsce package --no-dependencies --allow-missing-repository --skip-license --out orqeto-dev-vscode.vsix",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^26.2.0",
+		"@types/vscode": "1.100.0",
+		"@vscode/vsce": "^3.9.2",
+		"typescript": "~6.0.2"
+	}
+}
