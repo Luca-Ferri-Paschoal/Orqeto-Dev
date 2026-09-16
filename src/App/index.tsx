@@ -11,6 +11,7 @@ import {
 import { SettingsDrawer } from "@/features/context/components/SettingsDrawer"
 import {
 	type FileRoutingProjectEvidence,
+	selectUniqueCompleteExactRootFileRoutingProject,
 	selectUniqueStrongFileRoutingProject,
 } from "@/features/context/fileRoutingConfidence"
 import {
@@ -1435,9 +1436,23 @@ export function App() {
 						) => total + analysis.concreteCount,
 						0,
 					)
-					type StrongProjectAnalysis = FileRoutingProjectEvidence & {
+					type StrongProjectAnalysis = Omit<FileRoutingProjectEvidence, "candidate"> & {
 						analysis: FileProjectAnalysis
+						candidate: OverlayDestinationCandidate
 					}
+					const exactRootProjectCandidates = analyses.flatMap((analysis): StrongProjectAnalysis[] => {
+						if (!analysis.available || analysis.plan.rootCandidate === null)
+							return []
+
+						return [{
+							analysis,
+							projectName: getProjectName(analysis.tab.rootFolder),
+							sourceLabel,
+							fileCount: analysis.plan.fileCount,
+							candidate: analysis.plan.rootCandidate,
+						}]
+					})
+					const exactRootProjectMatch = selectUniqueCompleteExactRootFileRoutingProject<StrongProjectAnalysis>(exactRootProjectCandidates)
 					const strongProjectCandidates = analyses.flatMap((analysis): StrongProjectAnalysis[] => {
 						if (
 							!analysis.available ||
@@ -1525,7 +1540,10 @@ export function App() {
 							setRoutedApplyNotice(null)
 					}
 
-					const applyProjectAnalysis = async (analysis: FileProjectAnalysis): Promise<void> => {
+					const applyProjectAnalysis = async (
+						analysis: FileProjectAnalysis,
+						forcedCandidate?: OverlayDestinationCandidate,
+					): Promise<void> => {
 						const handle = workspaceHandlesRef.current.get(analysis.tab.id)
 
 						if (
@@ -1559,7 +1577,15 @@ export function App() {
 
 						let outcome: PreparedApplyOutcome
 
-						if (analysis.concreteCount === 1) {
+						if (forcedCandidate !== undefined) {
+							outcome = await handle.applyPreparedOverlay(
+								[path],
+								forcedCandidate,
+								analysis.plan.sourceFingerprint,
+								analysis.plan.routingFingerprint,
+								appendUndoTabs.has(analysis.tab.id),
+							)
+						} else if (analysis.concreteCount === 1) {
 							const candidate = analysis.concreteCandidates[0]
 
 							if (candidate === undefined) {
@@ -1635,8 +1661,19 @@ export function App() {
 							setRoutedApplyNotice(null)
 					}
 
+					if (exactRootProjectMatch !== null) {
+						await applyProjectAnalysis(
+							exactRootProjectMatch.analysis,
+							exactRootProjectMatch.candidate,
+						)
+						continue
+					}
+
 					if (strongProjectMatch !== null) {
-						await applyProjectAnalysis(strongProjectMatch.analysis)
+						await applyProjectAnalysis(
+							strongProjectMatch.analysis,
+							strongProjectMatch.candidate,
+						)
 						continue
 					}
 
@@ -2406,6 +2443,7 @@ export function App() {
 								active={tab.id === activeTabId}
 								interactionBlocked={isSettingsOpen || pendingProjectApplySelection !== null}
 								routingBusy={routingApplyTabId === tab.id}
+								routingDecisionPending={pendingProjectApplySelection !== null}
 								vscodeAvailable={vscodeAvailable}
 								initialRootFolder={tab.rootFolder}
 								folderSectionExpanded={appSettings.folderSectionExpanded}

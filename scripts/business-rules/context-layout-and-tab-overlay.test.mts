@@ -126,3 +126,17 @@ void test("tab loading overlay covers the complete workspace stage below project
 		/root: cn\([\s\S]{0,80}"relative"/,
 	)
 })
+
+// BR-UI-002
+void test("routing decision dialogs stay outside the inert workspace content", async () => {
+	const workspace = await read("src/features/context/components/ProjectWorkspacePane/index.tsx")
+
+	assert.match(
+		workspace,
+		/inert=\{isTabBusy\}[\s\S]*?\n\t\t\t<\/div>\n\n\t\t\t\{active && pendingGitPatch !== null/,
+	)
+	assert.match(
+		workspace,
+		/\{active && pendingGitPatch !== null[\s\S]*?\{active && pendingOverlay !== null[\s\S]*?\{!suppressLoadingOverlay &&/,
+	)
+})

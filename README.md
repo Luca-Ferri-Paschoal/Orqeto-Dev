@@ -8,7 +8,7 @@ It was designed to reduce the manual work between the editor, file system, and A
 
 ## Key features
 
-Orqeto Dev shows a lightweight loading spinner from the first HTML frame and uses a dimmed global loading overlay for long-running operations. While that work is active, the main UI is temporarily inert so conflicting clicks, drops, tab changes, or Settings actions cannot race the operation. User-decision dialogs remain interactive when the app is waiting for a destination or patch confirmation.
+Orqeto Dev shows a lightweight loading spinner from the first HTML frame and uses a dimmed global loading overlay for long-running operations. While that work is active, the main UI is temporarily inert so conflicting clicks, drops, tab changes, or Settings actions cannot race the operation. User-decision dialogs remain interactive when the app is waiting for a project, destination, or patch confirmation; the routing loader is removed immediately while those dialogs await input and resumes only after confirmation when work continues.
 
 ### AI context
 
@@ -25,6 +25,7 @@ Orqeto Dev shows a lightweight loading spinner from the first HTML frame and use
 - Support for UTF-8, UTF-8 with BOM, and UTF-16 with BOM content.
 - Non-text files can be safely ignored in normal mode.
 - Copy to clipboard and export to `.txt`, with fresh on-demand materialization and structured status counts for files/folders added, already selected, skipped, removed, or unavailable. Partial live exports are reported explicitly; auto-clear preserves the selection whenever any selected item is unavailable.
+- Manual **Clear** remains available when a selected path has disappeared or become ignored. Orqeto clears the selection but skips creating a partial history snapshot and reports that condition explicitly.
 - Persistent history of finalized contexts. The history list keeps only lightweight metadata in the UI; exact archived text is loaded only for the selected Copy action, while Download resolves and writes the snapshot in the backend.
 
 ### Work modes
@@ -82,9 +83,10 @@ Orqeto Dev also handles the reverse workflow: it receives code produced external
 
 - accepts files, folders, and ZIP archives;
 - analyzes destination candidates across all open project tabs using the same confidence/recommendation rules as the existing in-project resolver;
-- treats generic directory overlap in root-relative multi-file ZIPs as weak evidence; automatic root routing requires strong exact file-path coverage, while the original project root remains an explicit safe fallback;
+- treats generic directory overlap in root-relative multi-file ZIPs as weak evidence; once the exact ROOT mapping has strong strict-majority file-path coverage it outranks source-prefix relocation candidates inside that project, while equally strong exact matches in different open projects remain explicit ambiguity and the original project root remains a safe fallback;
+- gives a unique strong no-prefix exact ROOT-relative match priority over relocated/context-only candidates in other projects, including incremental ZIPs where most files already exist and the remaining file is new;
 - treats a project as internally unambiguous when that resolver has one safe recommended destination, even if weaker alternatives were discovered;
-- applies automatically only when there is exactly one safe resolved destination globally and no project still has unresolved internal ambiguity;
+- outside the strong exact-ROOT precedence case above, applies automatically only when there is exactly one safe resolved destination globally and no project still has unresolved internal ambiguity;
 - when multiple resolved projects or unresolved project destinations are possible, first asks which project to use and then reuses that project's existing internal destination resolver when needed;
 - whenever routing is not globally unambiguous, keeps **Apply at the root of the original project** available when that root destination is safe;
 - when no project has a concrete match, falls back to the existing confirmation for the original project root;

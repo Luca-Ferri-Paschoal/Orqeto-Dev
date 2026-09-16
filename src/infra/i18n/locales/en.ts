@@ -294,7 +294,7 @@ export const en = {
 	"workspace.contextNothingAvailable": "None of the selected files can be materialized right now.",
 	"workspace.contextCopyIncomplete": "Context was not copied because not all selected items could be materialized now.",
 	"workspace.contextCopyNotCompleted": "Context copy was not completed.",
-	"workspace.contextClearBlockedUnavailable": "Context was not cleared because some selected items are unavailable. Remove or restore those items before clearing.",
+	"workspace.contextClearedUnavailable": "Context selection cleared. No history snapshot was saved because some items were unavailable.",
 	"workspace.contextCopiedLive": "Context copied with the current contents of the selected files.",
 	"workspace.contextDownloadedLive": "Context saved with the current contents of the selected files.",
 	"workspace.applyBatchPendingSummary": "Apply partially processed; some items still require a decision.",

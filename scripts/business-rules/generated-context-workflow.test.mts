@@ -114,3 +114,52 @@ void test(
 		)
 	},
 )
+
+void test(
+	"BR-CTX-008 manual Clear remains available when selected paths are unavailable",
+	async () => {
+		const workspace = await readProjectFile("src/features/context/useContextWorkspace.ts")
+		const ptBR = await readProjectFile("src/infra/i18n/locales/pt-BR.ts")
+		const en = await readProjectFile("src/infra/i18n/locales/en.ts")
+		const clearStart = workspace.indexOf("const clearGeneratedContent = useCallback(")
+		const clearEnd = workspace.indexOf("const invalidateMissingRootFolder = useCallback(")
+		const clearBlock = workspace.slice(
+			clearStart,
+			clearEnd,
+		)
+
+		assert.ok(clearStart >= 0 && clearEnd > clearStart)
+		assert.match(
+			clearBlock,
+			/const hasUnavailableItems = materialized !== null && materialized\.skippedFiles > 0/,
+		)
+		assert.match(
+			clearBlock,
+			/!hasUnavailableItems[\s\S]*?archiveContextSnapshot/,
+		)
+		assert.match(
+			clearBlock,
+			/replaceFiles\(\[\]\)/,
+		)
+		assert.match(
+			clearBlock,
+			/status:\s*hasUnavailableItems\s*\?\s*"partial"\s*:\s*"success"/,
+		)
+		assert.match(
+			clearBlock,
+			/"workspace\.contextClearedUnavailable"/,
+		)
+		assert.doesNotMatch(
+			clearBlock,
+			/contextClearBlockedUnavailable/,
+		)
+		assert.match(
+			ptBR,
+			/"workspace\.contextClearedUnavailable"/,
+		)
+		assert.match(
+			en,
+			/"workspace\.contextClearedUnavailable"/,
+		)
+	},
+)

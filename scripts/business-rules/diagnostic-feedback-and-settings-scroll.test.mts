@@ -143,3 +143,40 @@ void test(
 		)
 	},
 )
+
+// BR-UI-002
+void test(
+	"routing and destination decision dialogs immediately suppress loading overlays",
+	async () => {
+		const [app, pane, workspace] = await Promise.all([
+			read("src/App/index.tsx"),
+			read("src/features/context/components/ProjectWorkspacePane/index.tsx"),
+			read("src/features/context/useContextWorkspace.ts"),
+		])
+
+		assert.match(
+			app,
+			/routingDecisionPending=\{pendingProjectApplySelection !== null\}/,
+		)
+		assert.match(
+			pane,
+			/routingDecisionPending: boolean/,
+		)
+		assert.match(
+			pane,
+			/const suppressLoadingOverlay = routingDecisionPending \|\|[\s\S]*?pendingOverlay !== null \|\|[\s\S]*?pendingGitPatch !== null/,
+		)
+		assert.match(
+			pane,
+			/!suppressLoadingOverlay && \([\s\S]*?<LoadingOverlay/,
+		)
+		assert.match(
+			workspace,
+			/setIsApplying\(true\)\s*setPendingGitPatch\(null\)/,
+		)
+		assert.match(
+			workspace,
+			/setIsApplying\(true\)\s*setPendingOverlay\(null\)/,
+		)
+	},
+)

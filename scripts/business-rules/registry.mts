@@ -59,6 +59,13 @@ export const businessRules: readonly BusinessRuleDefinition[] = [
 		evidenceToken: "BR-CTX-007",
 	},
 	{
+		id: "BR-CTX-008",
+		description: "Manual Clear discards active Context even when selected paths are unavailable, while skipping incomplete history snapshots.",
+		owner: "node",
+		evidenceFile: "scripts/business-rules/generated-context-workflow.test.mts",
+		evidenceToken: "BR-CTX-008",
+	},
+	{
 		id: "BR-HISTORY-001",
 		description: "Routine Context history listing transports metadata only and never includes archived content blobs.",
 		owner: "rust",
@@ -151,10 +158,17 @@ export const businessRules: readonly BusinessRuleDefinition[] = [
 	},
 	{
 		id: "BR-ROUTE-002",
-		description: "Root-relative ZIP routing never treats generic directory overlap as concrete project identity; automatic root selection requires strong exact-file coverage.",
+		description: "Root-relative ZIP routing requires strong no-prefix exact-file coverage; exact ROOT mapping outranks source-prefix relocation inside one project while generic directory overlap remains weak evidence.",
 		owner: "rust",
 		evidenceFile: "src-tauri/src/overlay.rs",
-		evidenceToken: "br_route_002_root_relative_zip_requires_strong_exact_file_evidence",
+		evidenceToken: "br_route_002_strong_exact_root_beats_equal_source_prefix_relocation",
+	},
+	{
+		id: "BR-ROUTE-003",
+		description: "A unique strong no-prefix exact ROOT-relative Files match outranks relocated or context-only matches in other open projects; competing strong exact matches remain explicit unless the source uniquely names one project.",
+		owner: "node",
+		evidenceFile: "scripts/business-rules/project-routing-confidence.test.mts",
+		evidenceToken: "BR-ROUTE-003",
 	},
 
 	{
@@ -408,6 +422,13 @@ export const businessRules: readonly BusinessRuleDefinition[] = [
 		owner: "node",
 		evidenceFile: "scripts/business-rules/patch7-performance.test.mts",
 		evidenceToken: "BR-UI-001",
+	},
+	{
+		id: "BR-UI-002",
+		description: "Project/destination selection and Git preview remain interactive by suppressing loading overlays and rendering decision dialogs outside inert busy-content subtrees.",
+		owner: "node",
+		evidenceFile: "scripts/business-rules/context-layout-and-tab-overlay.test.mts",
+		evidenceToken: "BR-UI-002",
 	},
 	{
 		id: "BR-ADV-001",

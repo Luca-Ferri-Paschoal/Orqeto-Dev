@@ -94,9 +94,11 @@ Each dropped item is resolved independently.
 -------------------------------------
 For each incoming item, Orqeto analyzes the same destination evidence against every rooted open project tab and preserves the existing in-project resolver's confidence/recommendation rules.
 
-A project is internally resolved when the existing resolver has a safe recommended candidate (`recommendedCandidateIndex`). In that state, the project contributes one destination even if weaker alternatives were discovered. If no recommendation exists and multiple concrete candidates remain, that project is internally ambiguous. A root-only fallback with no matching evidence is not a concrete match. For root-relative multi-file ZIPs, generic directory overlap is not project identity: the root becomes a concrete/recommended match only with strong exact file-path coverage; otherwise the original-project root remains an explicit safe fallback.
+A project is internally resolved when the existing resolver has a safe recommended candidate (`recommendedCandidateIndex`). In that state, the project contributes one destination even if weaker alternatives were discovered. If no recommendation exists and multiple concrete candidates remain, that project is internally ambiguous. A root-only fallback with no matching evidence is not a concrete match. For root-relative multi-file ZIPs, generic directory overlap is not project identity. Once the no-prefix exact ROOT candidate reaches the existing strong strict-majority file-coverage threshold, it becomes the project recommendation and outranks source-prefix relocation candidates; otherwise the original-project root remains an explicit safe fallback.
 
-Rules:
+A unique strong exact ROOT-relative match has priority over relocated/context-only evidence from another project. This includes incremental patches where most files already exist exactly and the remaining file is new. A candidate shown as `./` with a non-empty source prefix is still a relocation, not exact ROOT evidence. If multiple projects have equally strong exact ROOT mappings, keep the choice explicit unless the archive name uniquely identifies one of those exact-match projects.
+
+When no unique complete exact ROOT-relative match was established by the precedence rule above, use these rules:
 
 A. Exactly one resolved destination globally, with no internally ambiguous project
 --------------------------------------------------------------------------
@@ -279,6 +281,8 @@ Its final instructions follow the active work mode:
 ---------------------------
 Context discovery must remain bounded: at most 500,000 files, 1,000,000 visited directories, and 1,500,000 combined entries per operation, with bounded individual and aggregate path bytes. Materialization remains independently bounded to 16 MiB per text file and 128 MiB of aggregate text content. Large project support must never imply constructing an unbounded text payload in RAM. Persisted context history must also enforce bounded entry and per-project total sizes.
 
+Manual Context Clear must remain usable when a previously selected file is deleted, moved, or newly ignored. If the selection cannot be materialized completely, Clear skips history snapshot creation, clears the active selection, and reports a partial result instead of blocking the user. Complete clears still persist the full snapshot before discarding selection state.
+
 17. Localization
 ----------------
 The application UI supports pt-BR and en.
@@ -365,5 +369,5 @@ The application must provide deterministic loading feedback without adding confi
 - After React is available, long-running project operations use one global modal-style loading overlay with a dimmed backdrop.
 - While a long-running operation is active, the application UI is inert so tabs, buttons, drop targets, Settings, and other actions cannot start conflicting work.
 - The global operation overlay covers project initialization/root changes, context collection/generation, diagnostics, Apply/Undo work, Dev Ignore mutation, cross-project routing analysis, and VS Code extension installation/update.
-- User-decision dialogs such as destination selection and Git patch preview are not treated as background loading; they must remain interactive while awaiting the user's choice.
+- User-decision dialogs such as project selection, destination selection, and Git patch preview are not treated as background loading; they must remain interactive while awaiting the user's choice. Any routing loading overlay is removed immediately when one of these dialogs opens, and the dialog itself must be rendered outside any inert busy-content subtree. Loading feedback may resume only after the user confirms and mutation actually starts.
 - The visual spinner may use a short delay after startup to avoid flicker for operations that finish immediately, but interaction blocking begins as soon as the operation begins.

@@ -541,6 +541,11 @@ void test(
 			/if \(finishCancellableContextOperation\(cancellationToken\)\)/,
 		)
 
+		const cancellableKindType = workspace.slice(
+			workspace.indexOf("type CancellableContextOperationKind"),
+			workspace.indexOf("interface CancellableContextOperationToken"),
+		)
+
 		for (const kind of [
 			"create",
 			"custom",
@@ -550,10 +555,15 @@ void test(
 			"eslint",
 		]) {
 			assert.match(
-				workspace,
-				new RegExp(`\\| "${kind}"|beginCancellableContextOperation\\("${kind}"\\)`),
+				cancellableKindType,
+				new RegExp(`"${kind}"`),
 			)
 		}
+
+		assert.match(
+			workspace,
+			/beginCancellableContextOperation\(kind\)/,
+		)
 
 		assert.doesNotMatch(
 			workspace,

@@ -292,7 +292,7 @@ export const ptBR = {
 	"workspace.contextNothingAvailable": "Nenhum dos arquivos selecionados está disponível para materializar agora.",
 	"workspace.contextCopyIncomplete": "O contexto não foi copiado porque nem todos os itens selecionados puderam ser materializados agora.",
 	"workspace.contextCopyNotCompleted": "A cópia do contexto não foi concluída.",
-	"workspace.contextClearBlockedUnavailable": "O contexto não foi limpo porque alguns itens selecionados estão indisponíveis. Remova ou restaure esses itens antes de limpar.",
+	"workspace.contextClearedUnavailable": "Seleção do contexto limpa. O snapshot não foi salvo no histórico porque alguns itens estavam indisponíveis.",
 	"workspace.contextCopiedLive": "Contexto copiado com o conteúdo atual dos arquivos selecionados.",
 	"workspace.contextDownloadedLive": "Contexto salvo com o conteúdo atual dos arquivos selecionados.",
 	"workspace.applyBatchPendingSummary": "Aplicação parcialmente processada; ainda há itens aguardando uma decisão.",

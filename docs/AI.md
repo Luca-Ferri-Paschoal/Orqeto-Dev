@@ -346,12 +346,13 @@ Copying and downloading do not clear by default.
 
 The Clear button:
 
-1. saves a context snapshot for the current root;
-2. only then clears the context.
+1. attempts to materialize the current selection and save a complete context snapshot for the current root;
+2. when every selected item is available, clears only after that complete snapshot is saved successfully;
+3. when one or more selected items are unavailable, skips the history snapshot rather than saving a misleading partial snapshot, but still clears the active selection and reports the result as partial.
 
-If snapshot creation fails, preserve the active context.
+If complete snapshot persistence fails for reasons other than unavailable selected items, preserve the active context. Manual Clear is an explicit discard action and must not become permanently blocked merely because a previously selected file was deleted, moved, or newly ignored.
 
-When `auto_clear_after_export` is enabled, a successful manual copy/download also saves a snapshot before clearing.
+When `auto_clear_after_export` is enabled, a successful manual copy/download also saves a snapshot before clearing. Automatic clear remains suppressed when export materialization is partial because of unavailable items.
 
 Automatic copying after adding:
 
@@ -434,15 +435,17 @@ Files mode accepts:
 
 `.patch` and `.diff` inputs must be rejected with a message telling the user to switch to Git mode. `.orqeto-devignore` remains authoritative at both candidate resolution and final write/delete planning, including explicit root placement and deletion manifests. Deletions happen only through `.orqeto-dev-delete.json`. Directory sources use the large-project discovery budget: at most 500,000 files, 1,000,000 directories, and 1,500,000 combined entries, with independent per-path and aggregate path-byte ceilings. ZIP ingestion keeps its separate archive-specific limits. Project destination discovery uses the same large-project filesystem budget and fails closed on any structural read/metadata error that could hide a candidate. Routing discovery is operation-scoped: one temporary scan gathers cheap name evidence, and expensive file-by-file candidate validation is bounded. If cheap discovery produces more than the bounded validation shortlist, the result is explicit ambiguity with no automatic recommendation rather than candidate×file work.
 
-Each dropped item is analyzed independently against every open project root using the same confidence and recommendation criteria already used by the in-project resolver. The router must preserve that existing meaning of "unambiguous": if `recommendedCandidateIndex` identifies one safe candidate, that project is internally resolved to that candidate even when weaker alternatives were discovered. If no recommendation exists and multiple concrete candidates remain, the project is internally ambiguous. A root-only fallback with no matching evidence is **not** a concrete match; a root candidate with real matching evidence may be a normal concrete/recommended destination. For a root-relative multi-file ZIP, directory overlap alone is weak evidence and must not make another project concrete; automatic root recommendation requires strong exact file-path coverage, while the original project's safe root remains available as the explicit fallback.
+Each dropped item is analyzed independently against every open project root using the same confidence and recommendation criteria already used by the in-project resolver. The router must preserve that existing meaning of "unambiguous": if `recommendedCandidateIndex` identifies one safe candidate, that project is internally resolved to that candidate even when weaker alternatives were discovered. If no recommendation exists and multiple concrete candidates remain, the project is internally ambiguous. A root-only fallback with no matching evidence is **not** a concrete match; a root candidate with real matching evidence may be a normal concrete/recommended destination. For a root-relative multi-file ZIP, directory overlap alone is weak evidence and must not make another project concrete. Once the no-prefix exact ROOT candidate has strong exact file-path coverage (the existing strict-majority/minimum threshold), that candidate is the project's recommendation and outranks source-prefix relocation candidates, because Orqeto ZIP paths are already ROOT-relative. The original project's safe root remains available as the explicit fallback when no stronger automatic rule applies.
 
-Classify each project into one of three routing states:
+A complete exact ROOT-relative mapping is the strongest form of this evidence, but incremental patches commonly add a new file while most existing files already match exactly. If exactly one open project has a strong no-prefix exact ROOT match, route directly to that ROOT candidate even when another project exposes a relocated candidate from matching directory names or source-context suffixes. A candidate whose displayed destination is `./` but whose `sourcePrefix` is non-empty is still a relocation and must never be treated as exact ROOT evidence. If two or more projects have equally strong exact ROOT mappings, keep the operation ambiguous unless the source archive name uniquely identifies one of those exact-match projects.
+
+If no unique strong exact ROOT-relative match was established by the precedence rule above, classify each project into one of three routing states:
 
 - **resolved**: the existing resolver has a safe recommended destination; this project contributes exactly one global destination;
 - **ambiguous**: there is no safe recommendation and more than one concrete candidate remains; this project contributes unresolved possibilities and prevents automatic global routing;
 - **no match**: there is no concrete destination; a safe original-project root fallback may still be offered explicitly.
 
-The global routing rule is exact:
+The remaining global routing rule is exact:
 
 1. If there is exactly **one resolved destination globally** and no project remains internally ambiguous, apply there automatically. If it belongs to another tab, activate that tab first.
 2. If two or more projects are resolved, or any project remains internally ambiguous, do not switch tabs or apply automatically. Open the project selector.
@@ -782,7 +785,7 @@ Rules:
 
 Startup and long-running operations must never look frozen or allow conflicting UI actions. `index.html` provides a dependency-free boot spinner before React mounts. After React commits, the application uses a global modal-style loading overlay for project initialization and long-running operations such as context collection/generation, diagnostics, Apply/Undo, Dev Ignore updates, routing analysis, and VS Code extension install/update.
 
-Interaction blocking begins immediately when the operation starts; the visual operation spinner may be delayed briefly to avoid flicker for work that completes almost instantly. User-decision states such as project/destination selection and Git patch preview are not background loading and must remain interactive.
+Interaction blocking begins immediately when the operation starts; the visual operation spinner may be delayed briefly to avoid flicker for work that completes almost instantly. User-decision states such as project/destination selection and Git patch preview are not background loading and must remain interactive. When routing transitions from analysis into one of those decision states, the loading overlay must be removed immediately rather than waiting for its minimum-visible timer. After the user confirms, the decision dialog closes and normal Apply loading feedback may resume while mutation runs.
 
 ### Authoritative operation outcomes and top status
 
@@ -834,6 +837,7 @@ Current baseline rule IDs introduced with the verification harness:
 - **BR-CTX-005** — selection discovers path membership without opening or decoding regular source-file bodies;
 - **BR-CTX-006** — missing or newly ignored selected members are reported unavailable at materialization and stale selection-time bytes are never substituted;
 - **BR-CTX-007** — files created later under a previously selected folder remain unselected until that folder/file is explicitly sent again;
+- **BR-CTX-008** — manual Clear remains usable when selected paths are unavailable, skips incomplete history snapshots, and clears the active selection with partial feedback;
 - **BR-HISTORY-001** — routine Context-history listing returns metadata only and excludes archived text blobs;
 - **BR-HISTORY-002** — one archived Context snapshot is loaded lazily and reproduced exactly when requested;
 - **BR-HISTORY-003** — routine React history state is metadata-only and Copy lazily retrieves only the selected snapshot;
@@ -847,7 +851,8 @@ Current baseline rule IDs introduced with the verification harness:
 - **BR-SCAN-001** — a routing branch that cannot be inspected fails closed instead of being treated as absence of a candidate;
 - **BR-SCAN-002** — directory-source traversal is iterative rather than recursive, so deep trees do not consume the call stack;
 - **BR-ROUTE-001** — repeated basename discovery cannot cause unbounded candidate-by-file validation; excessive cheap candidates become explicit ambiguity with no automatic recommendation.
-- **BR-ROUTE-002** — root-relative ZIP routing requires strong exact file-path coverage before another project root can become concrete/recommended; generic directory overlap remains weak evidence.
+- **BR-ROUTE-002** — root-relative ZIP routing requires strong no-prefix exact file-path coverage; that exact ROOT mapping outranks source-prefix relocation inside one project, while competing strong exact matches across projects remain ambiguous and generic directory overlap remains weak evidence.
+- **BR-ROUTE-003** — one unique complete exact ROOT-relative Files match outranks relocated/context-only candidates in other projects; ties between complete exact matches remain explicit unless the source uniquely names one exact-match project.
 - **BR-FILE-001** — Files Apply uses the exact frozen bytes that passed final validation even if the original external source changes afterward;
 - **BR-FILE-002** — a source change between preview and final freeze invalidates the preview before project mutation;
 - **BR-FILE-003** — changed routing evidence invalidates the preview before Files Apply mutation;
@@ -884,6 +889,7 @@ Current baseline rule IDs introduced with the verification harness:
 - **BR-PERF-003** — full-project Download stays in the backend and avoids a giant Rust→React→Rust content round trip;
 - **BR-PERF-004** — routine VSIX packaging does not reinstall dependencies and the release build avoids duplicate app TypeScript compilation;
 - **BR-UI-001** — Folder, Context, and Apply expansion state plus the selected project-folder action are persisted globally and shared across every project tab.
+- **BR-UI-002** — routing/destination/Git-preview decision dialogs suppress loading overlays while awaiting input, live outside the inert busy-content subtree, and remain immediately interactive.
 - **BR-ADV-001** — a 50,000-path manual Context membership remains reference-only and small materialization subsets do not require cached project source blobs;
 - **BR-ADV-002** — race defenses revalidate Context root/membership revisions, `.orqeto-devignore` routing evidence, overlapping-root access, and exact contextual Undo identity;
 - **BR-ADV-003** — injected snapshot/journal/temp-write/commit/recovery failures fail closed without losing the pre-operation or externally modified state;

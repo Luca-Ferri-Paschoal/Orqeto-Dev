@@ -112,6 +112,7 @@ interface ProjectWorkspacePaneProps {
 	active: boolean
 	interactionBlocked: boolean
 	routingBusy: boolean
+	routingDecisionPending: boolean
 	vscodeAvailable: boolean
 	initialRootFolder: string | null
 	folderSectionExpanded: boolean
@@ -215,6 +216,7 @@ export function ProjectWorkspacePane({
 	active,
 	interactionBlocked,
 	routingBusy,
+	routingDecisionPending,
 	vscodeAvailable,
 	initialRootFolder,
 	folderSectionExpanded,
@@ -405,6 +407,9 @@ export function ProjectWorkspacePane({
 		isGeneratingDerivedContextForInteraction ||
 		isUpdatingProjectIgnore
 	const isTabBusy = isInteractionBusy || routingBusy
+	const suppressLoadingOverlay = routingDecisionPending ||
+		pendingOverlay !== null ||
+		pendingGitPatch !== null
 	const canCancelTabOperation = !routingBusy &&
 		!workspace.isCancellableContextOperationCancelled &&
 		workspace.cancellableContextOperationKind !== null
@@ -1517,44 +1522,47 @@ export function ProjectWorkspacePane({
 					/>
 				)}
 
-				{active && pendingGitPatch !== null && (
-					<GitPatchPreviewDialog
-						key={`${pendingGitPatch.patchFingerprint}:${pendingGitPatch.patchName}`}
-						pendingPatch={pendingGitPatch}
-						disabled={workspace.isApplying}
-						locale={workspace.locale}
-						onCancel={workspace.cancelPendingGitPatch}
-						onConfirm={() => void workspace.confirmPendingGitPatch()}
-					/>
-				)}
-
-				{active && pendingOverlay !== null && (
-					<OverlayDestinationDialog
-						key={`${pendingOverlay.queuePosition}:${pendingOverlay.paths.join("|")}`}
-						pendingOverlay={pendingOverlay}
-						disabled={workspace.isApplying}
-						locale={workspace.locale}
-						onCancel={workspace.cancelPendingOverlay}
-						onConfirm={candidate => void workspace.confirmPendingOverlay(candidate)}
-					/>
-				)}
 			</div>
 
-			<LoadingOverlay
-				active={isTabBusy}
-				scope="container"
-				label={translate(
-					workspace.locale,
-					"app.loading",
-				)}
-				cancelLabel={translate(
-					workspace.locale,
-					"app.loading.cancel",
-				)}
-				onCancel={canCancelTabOperation ?
-					workspace.cancelCancellableContextOperation :
-					undefined}
-			/>
+			{active && pendingGitPatch !== null && (
+				<GitPatchPreviewDialog
+					key={`${pendingGitPatch.patchFingerprint}:${pendingGitPatch.patchName}`}
+					pendingPatch={pendingGitPatch}
+					disabled={workspace.isApplying}
+					locale={workspace.locale}
+					onCancel={workspace.cancelPendingGitPatch}
+					onConfirm={() => void workspace.confirmPendingGitPatch()}
+				/>
+			)}
+
+			{active && pendingOverlay !== null && (
+				<OverlayDestinationDialog
+					key={`${pendingOverlay.queuePosition}:${pendingOverlay.paths.join("|")}`}
+					pendingOverlay={pendingOverlay}
+					disabled={workspace.isApplying}
+					locale={workspace.locale}
+					onCancel={workspace.cancelPendingOverlay}
+					onConfirm={candidate => void workspace.confirmPendingOverlay(candidate)}
+				/>
+			)}
+
+			{!suppressLoadingOverlay && (
+				<LoadingOverlay
+					active={isTabBusy}
+					scope="container"
+					label={translate(
+						workspace.locale,
+						"app.loading",
+					)}
+					cancelLabel={translate(
+						workspace.locale,
+						"app.loading.cancel",
+					)}
+					onCancel={canCancelTabOperation ?
+						workspace.cancelCancellableContextOperation :
+						undefined}
+				/>
+			)}
 		</div>
 	)
 }

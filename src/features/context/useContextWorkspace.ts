@@ -29,6 +29,7 @@ import {
 	filesApplyOutcomeFromResult,
 	gitApplyOutcomeFromResult,
 	isContextualUndoEligible,
+	type OperationCounter,
 	type OperationUndoReference,
 	undoOutcomeFromResult,
 } from "./operationOutcome"
@@ -1058,28 +1059,10 @@ export function useContextWorkspace({
 
 			try {
 				const materialized = await materializeSelectedContext()
-
-				if (materialized !== null && materialized.skippedFiles > 0) {
-					const outcome = createOperationOutcome({
-						operationType: "context_remove",
-						projectRoot: rootFolderRef.current,
-						status: "blocked",
-						counters: [{
-							kind: "unavailable",
-							files: materialized.skippedFiles,
-							directories: materialized.skippedDirectories,
-						}],
-					})
-
-					setNotice(createOperationOutcomeNotice(
-						locale,
-						outcome,
-						"workspace.contextClearBlockedUnavailable",
-					))
-					return
-				}
+				const hasUnavailableItems = materialized !== null && materialized.skippedFiles > 0
 
 				if (
+					!hasUnavailableItems &&
 					materialized !== null &&
 					materialized.content.length > 0 &&
 					!await archiveContextSnapshot(
@@ -1090,21 +1073,35 @@ export function useContextWorkspace({
 					return
 
 				replaceFiles([])
+				const counters: OperationCounter[] = [{
+					kind: "removed",
+					files: selectedCount,
+					directories: 0,
+				}]
+
+				if (hasUnavailableItems) {
+					counters.push({
+						kind: "unavailable",
+						files: materialized.skippedFiles,
+						directories: materialized.skippedDirectories,
+					})
+				}
+
 				const outcome = createOperationOutcome({
 					operationType: "context_remove",
 					projectRoot: rootFolderRef.current,
-					status: "success",
-					counters: [{
-						kind: "removed",
-						files: selectedCount,
-						directories: 0,
-					}],
+					status: hasUnavailableItems ?
+						"partial" :
+						"success",
+					counters,
 				})
 
 				setNotice(createOperationOutcomeNotice(
 					locale,
 					outcome,
-					"workspace.contextCleared",
+					hasUnavailableItems ?
+						"workspace.contextClearedUnavailable" :
+						"workspace.contextCleared",
 				))
 			} catch (error) {
 				setNotice({
@@ -2909,6 +2906,7 @@ export function useContextWorkspace({
 
 			isOperationRunningRef.current = true
 			setIsApplying(true)
+			setPendingGitPatch(null)
 
 			try {
 				const result = await applyGitPatch(
@@ -2922,7 +2920,6 @@ export function useContextWorkspace({
 					result,
 				)
 
-				setPendingGitPatch(null)
 				await refreshOverlayUndoHistory()
 				setNotice(createOperationOutcomeNotice(
 					locale,
@@ -2944,7 +2941,6 @@ export function useContextWorkspace({
 						})
 				}
 			} catch (error) {
-				setPendingGitPatch(null)
 				await refreshOverlayUndoHistory().catch(() => undefined)
 				setNotice({
 					kind: "error",
@@ -3027,6 +3023,7 @@ export function useContextWorkspace({
 
 			isOperationRunningRef.current = true
 			setIsApplying(true)
+			setPendingOverlay(null)
 
 			if (routedResolution !== null) {
 				try {
@@ -3045,7 +3042,6 @@ export function useContextWorkspace({
 					)
 
 					await refreshOverlayUndoHistory()
-					setPendingOverlay(null)
 					routedOverlayResolutionRef.current = null
 					setNotice(createOperationOutcomeNotice(
 						locale,
@@ -3068,7 +3064,6 @@ export function useContextWorkspace({
 							undoReference: outcome.undoReference,
 						})
 				} catch (error) {
-					setPendingOverlay(null)
 					routedOverlayResolutionRef.current = null
 					setNotice({
 						kind: "error",

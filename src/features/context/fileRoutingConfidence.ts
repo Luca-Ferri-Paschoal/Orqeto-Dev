@@ -1,5 +1,6 @@
 export interface FileRoutingCandidateEvidence {
 	destinationRelativePath: string
+	sourcePrefix?: string
 	matchedFiles: number
 	matchedDirectories: number
 	sourceContextMatches: number
@@ -86,6 +87,16 @@ function hasRealProjectEvidence(candidate: FileRoutingCandidateEvidence): boolea
 	return candidate.matchedFiles > 0 || candidate.sourceContextMatches >= 2
 }
 
+function hasCompleteExactRootCoverage(
+	fileCount: number,
+	candidate: FileRoutingCandidateEvidence,
+): boolean {
+	return fileCount > 0 &&
+		candidate.destinationRelativePath === "./" &&
+		(candidate.sourcePrefix ?? "") === "" &&
+		candidate.matchedFiles === fileCount
+}
+
 function hasStrongExactFileCoverage(
 	fileCount: number,
 	candidate: FileRoutingCandidateEvidence,
@@ -93,6 +104,7 @@ function hasStrongExactFileCoverage(
 	if (
 		fileCount <= 0 ||
 		candidate.destinationRelativePath !== "./" ||
+		(candidate.sourcePrefix ?? "") !== "" ||
 		candidate.matchedFiles <= 0
 	)
 		return false
@@ -106,12 +118,45 @@ function hasStrongExactFileCoverage(
 	if (fileCount < 2 || candidate.matchedFiles < 2)
 		return false
 
-	return candidate.matchedFiles * 2 >= fileCount
+	return candidate.matchedFiles * 2 > fileCount
 }
 
 function hasStrongSourceContext(candidate: FileRoutingCandidateEvidence): boolean {
 	return candidate.sourceContextMatches >= 2 &&
 		(candidate.matchedFiles > 0 || candidate.matchedDirectories > 0)
+}
+
+/**
+ * Selects a project only when it proves that every incoming file already
+ * exists at the exact ROOT-relative path declared by the source. This is the
+ * strongest Files-mode project identity signal and intentionally outranks
+ * relocated/context-only matches in other open projects.
+ *
+ * When more than one project proves the same complete exact mapping, the ZIP
+ * name may break the tie only when it uniquely names one of those projects.
+ */
+export function selectUniqueCompleteExactRootFileRoutingProject<
+	Project extends FileRoutingProjectEvidence,
+>(projects: readonly Project[]): Project | null {
+	const exactMatches = projects.filter(project => hasCompleteExactRootCoverage(
+		project.fileCount,
+		project.candidate,
+	))
+
+	if (exactMatches.length === 1)
+		return exactMatches[0] ?? null
+
+	if (exactMatches.length < 2)
+		return null
+
+	const identityMatches = exactMatches.filter(project => sourceLabelNamesProject(
+		project.sourceLabel,
+		project.projectName,
+	))
+
+	return identityMatches.length === 1 ?
+		identityMatches[0] ?? null :
+		null
 }
 
 /**
@@ -122,6 +167,11 @@ function hasStrongSourceContext(candidate: FileRoutingCandidateEvidence): boolea
 export function selectUniqueStrongFileRoutingProject<
 	Project extends FileRoutingProjectEvidence,
 >(projects: readonly Project[]): Project | null {
+	const completeExactRootMatch = selectUniqueCompleteExactRootFileRoutingProject(projects)
+
+	if (completeExactRootMatch !== null)
+		return completeExactRootMatch
+
 	const identityMatches = projects.filter(project =>
 		hasRealProjectEvidence(project.candidate) &&
 		sourceLabelNamesProject(

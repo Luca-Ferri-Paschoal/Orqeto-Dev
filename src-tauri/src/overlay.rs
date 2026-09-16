@@ -2529,7 +2529,7 @@ fn minimum_zip_root_file_matches(file_count: usize) -> usize {
 	match file_count {
 		0 => 0,
 		1 => 1,
-		_ => ((file_count + 1) / 2).max(2),
+		_ => ((file_count / 2) + 1).max(2),
 	}
 }
 
@@ -2547,19 +2547,18 @@ fn has_strong_zip_root_evidence(
 	candidate.candidate.matched_files >= minimum_zip_root_file_matches(manifest.files.len())
 }
 
-fn complete_exact_zip_root_match_index(
+fn strong_exact_zip_root_match_index(
 	candidates: &[CandidatePlan],
 	manifest: &OverlayManifest,
 ) -> Option<usize> {
-	if !matches!(&manifest.kind, ManifestKind::Zip { .. }) || manifest.files.is_empty() {
-		return None;
-	}
-
 	candidates.iter().position(|candidate| {
-		is_exact_root_candidate(candidate) &&
-			candidate.candidate.matched_files == manifest.files.len()
+		has_strong_zip_root_evidence(
+			candidate,
+			manifest,
+		)
 	})
 }
+
 
 fn prune_weak_candidates(
 	candidates: Vec<CandidatePlan>,
@@ -2919,28 +2918,18 @@ fn recommended_candidate_index(
 	candidates: &[CandidatePlan],
 	manifest: &OverlayManifest,
 ) -> Option<usize> {
-	if matches!(&manifest.kind, ManifestKind::Zip { .. }) && !manifest.files.is_empty() {
-		let exact_root_index = candidates.iter().position(|candidate| {
-			has_strong_zip_root_evidence(
-				candidate,
-				manifest,
-			)
-		});
-
-		if let Some(index) = exact_root_index {
-			let root_match_count = candidates[index].candidate.matched_files;
-			let has_equal_or_stronger_competitor = candidates
-				.iter()
-				.enumerate()
-				.any(|(candidate_index, candidate)| {
-					candidate_index != index &&
-						candidate.candidate.matched_files >= root_match_count
-				});
-
-			if !has_equal_or_stronger_competitor {
-				return Some(index);
-			}
-		}
+	// A ZIP produced for Orqeto declares ROOT-relative paths. Once the exact
+	// ROOT mapping has strong real file evidence, preserve those declared paths
+	// instead of letting an equally plausible source-prefix relocation turn the
+	// same project into an unnecessary destination decision. Cross-project
+	// ambiguity is still handled by the frontend using evidence from every open
+	// project, so this precedence never guesses between two projects that both
+	// prove a strong exact ROOT mapping.
+	if let Some(index) = strong_exact_zip_root_match_index(
+		candidates,
+		manifest,
+	) {
+		return Some(index);
 	}
 
 	let top = candidates.first()?;
@@ -3040,7 +3029,7 @@ fn prepare_overlay_manifest(
 	let root_candidate = candidate_build
 		.candidates
 		.iter()
-		.find(|candidate| candidate.destination_relative_path.as_os_str().is_empty())
+		.find(|candidate| is_exact_root_candidate(candidate))
 		.map(|candidate| candidate.candidate.clone());
 	let mut candidates = prune_weak_candidates(
 		candidate_build.candidates,
@@ -3050,10 +3039,11 @@ fn prepare_overlay_manifest(
 	let mut recommended = if candidate_build.validation_limit_exceeded {
 		// Candidate discovery may overflow because a project contains many
 		// repeated generic directory names. That overflow must not hide an
-		// independently proven ROOT mapping: every incoming ZIP file already
-		// exists at its exact declared ROOT-relative path. Weak alternatives do
-		// not need validation to establish that concrete destination.
-		complete_exact_zip_root_match_index(
+		// independently proven strong exact ROOT mapping. The exact ROOT seed is
+		// always validated, so majority exact-file coverage remains sufficient to
+		// resolve this project even when weaker relocation seeds were not all
+		// validated.
+		strong_exact_zip_root_match_index(
 			&candidates,
 			manifest,
 		)
@@ -5866,7 +5856,7 @@ mod tests {
 			Err(error) => error,
 		};
 
-		assert!(error.contains("routing changed"));
+		assert!(error.to_ascii_lowercase().contains("project or routing rules changed"));
 		assert_eq!(
 			fs::read_to_string(project_root.join("src/state.ts"))
 				.expect("existing destination should remain readable"),
@@ -6884,7 +6874,7 @@ mod tests {
 		)
 		.err()
 		.expect("path traversal should be rejected");
-		assert!(traversal.contains("fora do formato esperado"));
+		assert!(traversal.contains("outside the expected format"));
 	}
 
 	#[test]
@@ -6934,7 +6924,7 @@ mod tests {
 			.err()
 			.expect("an unreadable routing branch must fail closed");
 
-		assert!(error.contains("routing was rejected"));
+		assert!(error.to_ascii_lowercase().contains("routing was rejected"));
 		assert!(error.contains("could not be completed"));
 	}
 
@@ -7054,6 +7044,97 @@ mod tests {
 		assert_eq!(matching.candidates.len(), 1);
 		assert_eq!(matching.candidates[0].destination_relative_path, "./");
 		assert_eq!(matching.candidates[0].matched_files, 4);
+	}
+
+
+	#[test]
+	fn br_route_002_strong_exact_root_beats_equal_source_prefix_relocation() {
+		let test_directory = TestDirectory::new();
+		let archive_path = test_directory.path.join("card-flow-fix.zip");
+		let project_root = test_directory.path.join("financial-project");
+		let entries = [
+			(
+				"apps/api/src/modules/billing/tenant/checkout/cardFlow.test.ts",
+				"new-card-flow",
+			),
+			(
+				"apps/api/src/modules/billing/shared/durableAutomaticPaymentSafety.test.ts",
+				"durable",
+			),
+			(
+				"apps/api/src/modules/billing/engine/financialWriteAdmission.test.ts",
+				"admission",
+			),
+			(
+				"apps/api/src/infra/financial/payments/provider/asaas/provider.test.ts",
+				"provider",
+			),
+			(
+				"apps/api/src/infra/financial/payments/outboxSafety.test.ts",
+				"outbox",
+			),
+			(
+				"apps/api/src/infra/financial/asaas/config.ts",
+				"config",
+			),
+		];
+
+		write_test_zip(
+			&archive_path,
+			&entries,
+		);
+
+		// Five files already exist exactly where the ZIP declares them. The
+		// sixth file is new but its parent hierarchy already belongs to the same
+		// project. This is the common incremental-patch case that must preserve
+		// the archive's ROOT-relative paths.
+		for (index, (path, content)) in entries.iter().enumerate() {
+			let exact_destination = project_root.join(path);
+
+			if index != 0 {
+				write_test_file(
+					&exact_destination,
+					content,
+				);
+			} else {
+				fs::create_dir_all(
+					exact_destination.parent().expect("new file should have a parent"),
+				)
+				.expect("new exact-root parent should be created");
+			}
+
+			// Also create an equally convincing relocated mapping obtained by
+			// stripping `apps/api`. Equal file counts must not make the exact ROOT
+			// mapping ambiguous inside this project.
+			if index != 0 {
+				let stripped = Path::new(path)
+					.strip_prefix("apps/api")
+					.expect("fixture should use the apps/api prefix");
+				write_test_file(
+					&project_root.join(stripped),
+					content,
+				);
+			}
+		}
+
+		let prepared = prepare_project_overlay_blocking(
+			project_root.to_string_lossy().into_owned(),
+			vec![archive_path.to_string_lossy().into_owned()],
+		)
+		.expect("strong exact ROOT evidence should resolve the project");
+
+		let root_candidate = prepared
+			.root_candidate
+			.as_ref()
+			.expect("safe exact ROOT fallback should exist");
+
+		assert_eq!(root_candidate.destination_relative_path, "./");
+		assert_eq!(root_candidate.source_prefix, "");
+		assert_eq!(root_candidate.matched_files, 5);
+		assert_eq!(prepared.recommended_candidate_index, Some(0));
+		assert_eq!(prepared.candidates[0].destination_relative_path, "./");
+		assert_eq!(prepared.candidates[0].source_prefix, "");
+		assert_eq!(prepared.candidates[0].matched_files, 5);
 	}
 
 
@@ -7327,7 +7408,7 @@ mod tests {
 		)
 		.err()
 		.expect("ignore change should invalidate the routed preview");
-		assert!(error.contains("routing changed"));
+		assert!(error.to_ascii_lowercase().contains("project or routing rules changed"));
 		assert!(!project_root.join("state.ts").exists());
 	}
 
