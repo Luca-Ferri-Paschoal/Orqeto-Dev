@@ -20,11 +20,12 @@ export default defineConfig({
 		},
 	},
 	server: {
-		port: 1420,
+		port: 1430,
 		strictPort: true,
 		watch: {
 			ignored: [
 				"**/src-tauri/**",
+				/\.orqeto-tmp-\d+-\d+$/,
 			],
 		},
 	},

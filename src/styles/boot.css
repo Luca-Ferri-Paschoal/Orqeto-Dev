@@ -1,0 +1,47 @@
+#orqeto-boot-loading {
+	position: fixed;
+	inset: 0;
+	z-index: 2147483647;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgb(2 6 23 / 0.35);
+	opacity: 1;
+	transition: opacity 160ms ease;
+}
+
+#orqeto-boot-loading.is-ready {
+	opacity: 0;
+	pointer-events: none;
+}
+
+#orqeto-boot-spinner {
+	width: 40px;
+	height: 40px;
+	border: 3px solid rgb(255 255 255 / 0.3);
+	border-top-color: #fff;
+	border-radius: 9999px;
+	animation: orqeto-boot-spin 700ms linear infinite;
+}
+
+@keyframes orqeto-boot-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-color-scheme: dark) {
+	#orqeto-boot-loading {
+		background: rgb(0 0 0 / 0.78);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#orqeto-boot-loading {
+		transition: none;
+	}
+
+	#orqeto-boot-spinner {
+		animation: none;
+	}
+}

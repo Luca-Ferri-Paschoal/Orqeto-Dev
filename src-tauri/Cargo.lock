@@ -3026,18 +3026,22 @@ dependencies = [
 
 [[package]]
 name = "orqeto-dev"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "cc",
+ "getrandom 0.3.4",
  "ignore",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
  "tauri-plugin-sql",
+ "tokio",
  "winreg",
  "zip",
 ]

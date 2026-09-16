@@ -20,7 +20,7 @@ export const styles = {
 	),
 
 	label: cn(
-		"text-[11px]",
+		"text-[12px]",
 		"font-semibold",
 		"text-[var(--font-color-secondary)]",
 	),

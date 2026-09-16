@@ -63,6 +63,7 @@ export const styles = {
 		"mt-4",
 		"max-h-64",
 		"space-y-2",
+		"orqeto-scroll-area",
 		"overflow-y-auto",
 	),
 

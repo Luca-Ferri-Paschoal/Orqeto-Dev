@@ -135,3 +135,76 @@ input,
 select {
 	font: inherit;
 }
+
+.orqeto-scroll-area {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+.orqeto-scroll-area::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+.orqeto-overlay-scrollbar-thumb {
+	position: fixed;
+	z-index: 100;
+	border-radius: 9999px;
+	background: var(--font-color-muted);
+	opacity: 0;
+	pointer-events: none;
+	touch-action: none;
+	transition:
+		opacity 140ms ease,
+		background-color 140ms ease;
+}
+
+.orqeto-overlay-scrollbar-thumb.is-visible {
+	opacity: 0.42;
+	pointer-events: auto;
+}
+
+.orqeto-overlay-scrollbar-thumb.is-hovered {
+	opacity: 0.62;
+}
+
+.orqeto-overlay-scrollbar-thumb.is-dragging {
+	opacity: 0.78;
+}
+
+.orqeto-overlay-scrollbar-thumb--vertical {
+	width: 6px;
+	cursor: ns-resize;
+}
+
+.orqeto-overlay-scrollbar-thumb--horizontal {
+	height: 6px;
+	cursor: ew-resize;
+}
+
+body.orqeto-overlay-scrollbar-dragging {
+	user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.orqeto-overlay-scrollbar-thumb {
+		transition: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.orqeto-scroll-area {
+		scrollbar-width: auto;
+	}
+
+	.orqeto-scroll-area::-webkit-scrollbar {
+		display: block;
+		width: auto;
+		height: auto;
+	}
+
+	.orqeto-overlay-scrollbar-thumb {
+		display: none !important;
+	}
+}

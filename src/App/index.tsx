@@ -1,40 +1,72 @@
 import { styles } from "./style"
+import {
+	type ProjectApplyChoice,
+	ProjectApplyDialog,
+} from "@/features/context/components/ProjectApplyDialog"
 import { ProjectTabs } from "@/features/context/components/ProjectTabs"
 import {
 	type ProjectWorkspaceHandle,
 	ProjectWorkspacePane,
 } from "@/features/context/components/ProjectWorkspacePane"
 import { SettingsDrawer } from "@/features/context/components/SettingsDrawer"
+import {
+	type FileRoutingProjectEvidence,
+	selectUniqueStrongFileRoutingProject,
+} from "@/features/context/fileRoutingConfidence"
+import {
+	getRoutedApplyMessageKey,
+	type OperationUndoReference,
+	type RoutedApplyState,
+} from "@/features/context/operationOutcome"
 import type {
 	AppNotice,
+	ContextMode,
+	GitPatchPreview,
+	OverlayDestinationCandidate,
+	PrepareProjectOverlayResult,
 	ProjectSection,
 	ProjectTab,
+	WorkMode,
 } from "@/features/context/types"
 import { useAppSettings } from "@/features/context/useAppSettings"
-import type { ContextWorkspacePreferences } from "@/features/context/useContextWorkspace"
+import type {
+	ContextWorkspacePreferences,
+	PreparedApplyOutcome,
+} from "@/features/context/useContextWorkspace"
+import {
+	getErrorMessage,
+	isGitPatchPath,
+} from "@/features/context/utils"
 import {
 	deleteProjectTab,
+	flushProjectTabWrites,
 	getActiveProjectTabId,
 	getProjectTabs,
 	saveProjectTabOrder,
 	setActiveProjectTabId,
-	setProjectTabSectionExpanded,
 	upsertProjectTab,
 } from "@/infra/configDatabase"
 import {
+	ackExternalAction,
+	cleanupNativeDrop,
 	closeFolderInExplorer,
+	destroyMainWindow,
 	discardProjectOverlayUndo,
 	findProjectForPaths,
 	findProjectForRoot,
 	folderExists,
+	getOverlayRecoveryStatus,
+	isVscodeAvailable,
+	nextExternalAction,
 	openFolderInExplorer,
-	takeExternalActions,
+	prepareGitPatch,
+	prepareProjectOverlay,
+	setExternalIntegrationState,
 } from "@/infra/desktop"
-import {
-	type Locale,
-	translate,
-} from "@/infra/i18n"
+import { translate } from "@/infra/i18n"
+import { BootLoadingOverlayCleanup } from "@/shared/components/BootLoadingOverlayCleanup"
 import { Notice } from "@/shared/components/Notice"
+import OverlayScrollbarManager from "@/shared/components/OverlayScrollbarManager"
 import { getVersion } from "@tauri-apps/api/app"
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow } from "@tauri-apps/api/window"
@@ -49,29 +81,126 @@ import {
 
 const EXTERNAL_ACTIONS_PENDING_EVENT = "external-actions-pending"
 
-type PendingExternalContextAction = | {
-	type: "add"
-	paths: string[]
-} |
-{
-	type: "remove"
+type PendingExternalSelectionAction = {
+	type: "add" | "addAndCopy" | "remove"
+	target: "context" | "ignore"
 	paths: string[]
 }
 
-function getErrorMessage(
-	error: unknown,
-	locale: Locale,
-): string {
-	if (error instanceof Error)
-		return error.message
+interface FileProjectAnalysis {
+	tab: ProjectTab & { rootFolder: string }
+	plan: PrepareProjectOverlayResult
+	concreteCandidates: OverlayDestinationCandidate[]
+	concreteCount: number
+	available: boolean
+}
 
-	if (typeof error === "string")
-		return error
+interface GitProjectAnalysis {
+	tab: ProjectTab & { rootFolder: string }
+	preview: GitPatchPreview
+	available: boolean
+}
 
-	return translate(
-		locale,
-		"workspace.unexpectedError",
-	)
+type ProjectApplySelection = | {
+	type: "project"
+	tabId: string
+} | {
+	type: "root"
+} | {
+	type: "cancel"
+}
+
+interface PendingProjectApplySelection {
+	mode: WorkMode
+	sourceLabel: string
+	projects: ProjectApplyChoice[]
+	allowCurrentRoot: boolean
+	currentProjectName: string
+}
+
+type RoutedApplyNoticeKind = RoutedApplyState
+
+interface RoutedApplyNotice {
+	kind: RoutedApplyNoticeKind
+	projectName: string
+	tabId: string
+	undoReference: OperationUndoReference | null
+}
+
+function getProjectName(rootFolder: string | null): string {
+	if (rootFolder === null)
+		return ""
+
+	const normalized = rootFolder
+		.replaceAll("\\", "/")
+		.replace(/\/$/, "")
+	const name = normalized.split("/").filter(Boolean).at(-1)
+
+	return name ?? rootFolder
+}
+
+function getSourceLabel(path: string): string {
+	const normalized = path
+		.replaceAll("\\", "/")
+		.replace(/\/$/, "")
+	const parts = normalized.split("/").filter(Boolean)
+
+	return parts.at(-1) ?? path
+}
+
+function isRootFallbackOnlyCandidate(candidate: OverlayDestinationCandidate): boolean {
+	return candidate.destinationRelativePath === "./" &&
+		candidate.matchedFiles === 0 &&
+		candidate.matchedDirectories === 0 &&
+		candidate.sourceContextMatches === 0
+}
+
+function getConcreteOverlayCandidates(plan: PrepareProjectOverlayResult): OverlayDestinationCandidate[] {
+	if (plan.recommendedCandidateIndex !== null) {
+		const recommendedCandidate = plan.candidates[plan.recommendedCandidateIndex]
+
+		if (recommendedCandidate !== undefined)
+			return [recommendedCandidate]
+	}
+
+	return plan.candidates.filter(candidate => !isRootFallbackOnlyCandidate(candidate))
+}
+
+function getConcreteOverlayCount(
+	plan: PrepareProjectOverlayResult,
+	concreteCandidates: readonly OverlayDestinationCandidate[],
+): number {
+	if (plan.ambiguityLimitExceeded) {
+		return Math.max(
+			2,
+			plan.candidateCount,
+		)
+	}
+
+	return concreteCandidates.length
+}
+
+function isSameOverlayCandidate(
+	left: OverlayDestinationCandidate,
+	right: OverlayDestinationCandidate,
+): boolean {
+	return left.destinationRelativePath === right.destinationRelativePath &&
+		left.sourcePrefix === right.sourcePrefix
+}
+
+function withOnlyOverlayCandidates(
+	plan: PrepareProjectOverlayResult,
+	candidates: OverlayDestinationCandidate[],
+): PrepareProjectOverlayResult {
+	return {
+		...plan,
+		candidates,
+		candidateCount: candidates.length,
+		ambiguityLimitExceeded: false,
+		recommendedCandidateIndex: candidates.length === 1 ?
+			0 :
+			null,
+	}
 }
 
 function createProjectTab(rootFolder: string | null = null): ProjectTab {
@@ -84,42 +213,16 @@ function createProjectTab(rootFolder: string | null = null): ProjectTab {
 	}
 }
 
-function getProjectSectionExpanded(
-	tab: ProjectTab,
-	section: ProjectSection,
-): boolean {
-	if (section === "folder")
-		return tab.folderSectionExpanded
+async function mapFilesystemHeavySerially<Item, Result>(
+	items: readonly Item[],
+	mapper: (item: Item) => Promise<Result>,
+): Promise<Result[]> {
+	const results: Result[] = []
 
-	if (section === "context")
-		return tab.contextSectionExpanded
+	for (const item of items)
+		results.push(await mapper(item))
 
-	return tab.applySectionExpanded
-}
-
-function withProjectSectionExpanded(
-	tab: ProjectTab,
-	section: ProjectSection,
-	expanded: boolean,
-): ProjectTab {
-	if (section === "folder") {
-		return {
-			...tab,
-			folderSectionExpanded: expanded,
-		}
-	}
-
-	if (section === "context") {
-		return {
-			...tab,
-			contextSectionExpanded: expanded,
-		}
-	}
-
-	return {
-		...tab,
-		applySectionExpanded: expanded,
-	}
+	return results
 }
 
 function moveTabToInsertionPosition(
@@ -167,15 +270,29 @@ export function App() {
 	const [globalNotice, setGlobalNotice] = useState<AppNotice | null>(null)
 	const [appVersion, setAppVersion] = useState("")
 	const [lastRootFolder, setLastRootFolder] = useState<string | null>(null)
+	const [pendingProjectApplySelection, setPendingProjectApplySelection] = useState<PendingProjectApplySelection | null>(null)
+	const [routedApplyNotice, setRoutedApplyNotice] = useState<RoutedApplyNotice | null>(null)
+	const [isRoutingApply, setIsRoutingApply] = useState(false)
+	const [ignoreDialogTabId, setIgnoreDialogTabId] = useState<string | null>(null)
+	const [workspaceContextModes, setWorkspaceContextModes] = useState<Record<string, ContextMode>>({})
+	const [isSettingsOperationBusy, setIsSettingsOperationBusy] = useState(false)
+	const [routingApplyTabId, setRoutingApplyTabId] = useState<string | null>(null)
+	const [vscodeAvailable, setVscodeAvailable] = useState(false)
 	const tabsRef = useRef<ProjectTab[]>([])
 	const activeTabIdRef = useRef("")
 	const workspaceHandlesRef = useRef(new Map<string, ProjectWorkspaceHandle>())
-	const pendingExternalContextActionsRef = useRef(new Map<string, PendingExternalContextAction[]>())
+	const pendingExternalSelectionActionsRef = useRef(new Map<string, PendingExternalSelectionAction[]>())
+	const ignoreDialogTabIdRef = useRef<string | null>(null)
 	const initializationStartedRef = useRef(false)
 	const processingExternalActionsRef = useRef(false)
 	const externalActionsRequestedRef = useRef(false)
 	const isClosingAppRef = useRef(false)
-	const sectionSaveQueuesRef = useRef(new Map<string, Promise<void>>())
+	const rootChangeRevisionsRef = useRef(new Map<string, number>())
+	const tabOrderSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
+	const activeTabSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
+	const projectApplySelectionResolverRef = useRef<((selection: ProjectApplySelection) => void) | null>(null)
+	const isRoutingApplyRef = useRef(false)
+	const externalIntegrationWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
 
 	useEffect(
 		() => {
@@ -198,19 +315,99 @@ export function App() {
 		[],
 	)
 
+	useEffect(
+		() => {
+			let cancelled = false
+
+			async function refreshVscodeAvailability(): Promise<void> {
+				try {
+					const available = await isVscodeAvailable()
+
+					if (!cancelled)
+						setVscodeAvailable(available)
+				} catch {
+					if (!cancelled)
+						setVscodeAvailable(false)
+				}
+			}
+
+			function handleWindowFocus(): void {
+				void refreshVscodeAvailability()
+			}
+
+			void refreshVscodeAvailability()
+			window.addEventListener(
+				"focus",
+				handleWindowFocus,
+			)
+
+			return () => {
+				cancelled = true
+				window.removeEventListener(
+					"focus",
+					handleWindowFocus,
+				)
+			}
+		},
+		[],
+	)
+
+	useEffect(
+		() => {
+			if (!appSettings.isReady)
+				return
+
+			let cancelled = false
+			void getOverlayRecoveryStatus()
+				.then(status => {
+					if (!cancelled && status.blocked) {
+						setGlobalNotice({
+							kind: "error",
+							message: translate(
+								appSettings.locale,
+								"app.recoveryBlocked",
+							),
+						})
+					}
+				})
+				.catch(error => {
+					if (!cancelled) {
+						setGlobalNotice({
+							kind: "error",
+							message: getErrorMessage(
+								error,
+								appSettings.locale,
+							),
+						})
+					}
+				})
+
+			return () => {
+				cancelled = true
+			}
+		},
+		[
+			appSettings.isReady,
+			appSettings.locale,
+		],
+	)
+
 	const preferences = useMemo<ContextWorkspacePreferences>(
 		() => ({
 			locale: appSettings.locale,
 			theme: appSettings.theme,
+			workMode: appSettings.workMode,
 			autoCopyContextAfterAdd: appSettings.autoCopyContextAfterAdd,
 			autoClearAfterExport: appSettings.autoClearAfterExport,
 			contextFilterHistoryLimit: appSettings.contextFilterHistoryLimit,
 			contextHistoryLimit: appSettings.contextHistoryLimit,
 			overlayUndoHistoryLimit: appSettings.overlayUndoHistoryLimit,
+			diagnosticFileLimit: appSettings.diagnosticFileLimit,
 			openExplorerOnAppStart: appSettings.openExplorerOnAppStart,
 			openExplorerOnProjectOpen: appSettings.openExplorerOnProjectOpen,
 			closeExplorerOnFolderClose: appSettings.closeExplorerOnFolderClose,
 			closeExplorerOnAppExit: appSettings.closeExplorerOnAppExit,
+			hideOpenProjectSubfolders: appSettings.hideOpenProjectSubfolders,
 		}),
 		[
 			appSettings.autoClearAfterExport,
@@ -219,11 +416,14 @@ export function App() {
 			appSettings.closeExplorerOnFolderClose,
 			appSettings.contextFilterHistoryLimit,
 			appSettings.contextHistoryLimit,
+			appSettings.hideOpenProjectSubfolders,
 			appSettings.locale,
 			appSettings.theme,
+			appSettings.workMode,
 			appSettings.openExplorerOnAppStart,
 			appSettings.openExplorerOnProjectOpen,
 			appSettings.overlayUndoHistoryLimit,
+			appSettings.diagnosticFileLimit,
 		],
 	)
 
@@ -248,12 +448,34 @@ export function App() {
 		[],
 	)
 
+	const updateIgnoreDialogState = useCallback(
+		(
+			tabId: string,
+			open: boolean,
+		) => {
+			const nextTabId = open ?
+				tabId :
+				ignoreDialogTabIdRef.current === tabId ?
+					null :
+					ignoreDialogTabIdRef.current
+
+			ignoreDialogTabIdRef.current = nextTabId
+			setIgnoreDialogTabId(nextTabId)
+		},
+		[],
+	)
+
 	const persistActiveTab = useCallback(
 		async (id: string): Promise<void> => {
 			updateActiveTabState(id)
 
+			const operation = activeTabSaveQueueRef.current
+				.catch(() => undefined)
+				.then(() => setActiveProjectTabId(id))
+			activeTabSaveQueueRef.current = operation.catch(() => undefined)
+
 			try {
-				await setActiveProjectTabId(id)
+				await operation
 			} catch (error) {
 				setGlobalNotice({
 					kind: "error",
@@ -270,98 +492,35 @@ export function App() {
 		],
 	)
 
+	const persistTabOrder = useCallback(
+		async (ids: string[]): Promise<void> => {
+			const operation = tabOrderSaveQueueRef.current
+				.catch(() => undefined)
+				.then(() => saveProjectTabOrder(ids))
+			tabOrderSaveQueueRef.current = operation.catch(() => undefined)
+			await operation
+		},
+		[],
+	)
+
 	const handleSectionExpandedChange = useCallback(
 		async (
-			tabId: string,
 			section: ProjectSection,
 			expanded: boolean,
 		): Promise<void> => {
-			const currentTabs = tabsRef.current
-			const tabIndex = currentTabs.findIndex(tab => tab.id === tabId)
-			const currentTab = currentTabs[tabIndex]
-
-			if (
-				currentTab === undefined ||
-				getProjectSectionExpanded(
-					currentTab,
-					section,
-				) === expanded
-			)
+			if (section === "folder") {
+				await appSettings.updateFolderSectionExpanded(expanded)
 				return
-
-			const previousValue = getProjectSectionExpanded(
-				currentTab,
-				section,
-			)
-			const nextTab = withProjectSectionExpanded(
-				currentTab,
-				section,
-				expanded,
-			)
-			const nextTabs = currentTabs.map(tab =>
-				tab.id === tabId ?
-					nextTab :
-					tab)
-
-			updateTabsState(nextTabs)
-
-			const queueKey = `${tabId}:${section}`
-			const previousSave = sectionSaveQueuesRef.current.get(queueKey) ?? Promise.resolve()
-			const save = previousSave
-				.catch(() => undefined)
-				.then(() => setProjectTabSectionExpanded(
-					tabId,
-					section,
-					expanded,
-				))
-
-			sectionSaveQueuesRef.current.set(
-				queueKey,
-				save,
-			)
-
-			try {
-				await save
-			} catch (error) {
-				if (sectionSaveQueuesRef.current.get(queueKey) !== save)
-					return
-
-				const latestTabs = tabsRef.current
-				const latestTab = latestTabs.find(tab => tab.id === tabId)
-
-				if (
-					latestTab !== undefined &&
-					getProjectSectionExpanded(
-						latestTab,
-						section,
-					) === expanded
-				) {
-					updateTabsState(latestTabs.map(tab =>
-						tab.id === tabId ?
-							withProjectSectionExpanded(
-								tab,
-								section,
-								previousValue,
-							) :
-							tab))
-				}
-
-				setGlobalNotice({
-					kind: "error",
-					message: getErrorMessage(
-						error,
-						appSettings.locale,
-					),
-				})
-			} finally {
-				if (sectionSaveQueuesRef.current.get(queueKey) === save)
-					sectionSaveQueuesRef.current.delete(queueKey)
 			}
+
+			if (section === "context") {
+				await appSettings.updateContextSectionExpanded(expanded)
+				return
+			}
+
+			await appSettings.updateApplySectionExpanded(expanded)
 		},
-		[
-			appSettings.locale,
-			updateTabsState,
-		],
+		[appSettings],
 	)
 
 	const handleRootFolderChange = useCallback(
@@ -369,12 +528,26 @@ export function App() {
 			tabId: string,
 			rootFolder: string | null,
 		): Promise<boolean> => {
+			const revision = (rootChangeRevisionsRef.current.get(tabId) ?? 0) + 1
+			rootChangeRevisionsRef.current.set(
+				tabId,
+				revision,
+			)
+			const isCurrentRevision = (): boolean =>
+				rootChangeRevisionsRef.current.get(tabId) === revision
 			const currentTabs = tabsRef.current
 			const tabIndex = currentTabs.findIndex(tab => tab.id === tabId)
 			const currentTab = currentTabs[tabIndex]
 
 			if (currentTab === undefined)
 				return false
+
+			if (ignoreDialogTabIdRef.current === tabId) {
+				updateIgnoreDialogState(
+					tabId,
+					false,
+				)
+			}
 
 			try {
 				if (rootFolder !== null) {
@@ -390,6 +563,9 @@ export function App() {
 							otherRoots,
 							rootFolder,
 						)
+
+					if (!isCurrentRevision())
+						return false
 
 					if (existingIndex !== null) {
 						const existingTab = otherTabs[existingIndex]
@@ -413,12 +589,19 @@ export function App() {
 					rootFolder,
 				}
 
+				if (!isCurrentRevision())
+					return false
+
 				await upsertProjectTab(
 					nextTab,
 					tabIndex,
 				)
 
-				const nextTabs = currentTabs.map(tab =>
+				if (!isCurrentRevision())
+					return false
+
+				const latestTabs = tabsRef.current
+				const nextTabs = latestTabs.map(tab =>
 					tab.id === tabId ?
 						nextTab :
 						tab)
@@ -444,6 +627,7 @@ export function App() {
 		[
 			appSettings.locale,
 			persistActiveTab,
+			updateIgnoreDialogState,
 			updateTabsState,
 		],
 	)
@@ -463,24 +647,43 @@ export function App() {
 				handle,
 			)
 
-			const pending = pendingExternalContextActionsRef.current.get(tabId)
+			const pending = pendingExternalSelectionActionsRef.current.get(tabId)
 
 			if (pending === undefined)
 				return
 
-			pendingExternalContextActionsRef.current.delete(tabId)
+			pendingExternalSelectionActionsRef.current.delete(tabId)
 			void (async () => {
 				for (const action of pending) {
-					if (action.type === "add") {
-						await handle.addExternalContext(action.paths)
-						continue
-					}
+					try {
+						if (action.target === "ignore") {
+							if (action.type === "add")
+								await handle.addExternalIgnore(action.paths)
+							else
+								await handle.removeExternalIgnore(action.paths)
 
-					await handle.removeExternalContext(action.paths)
+							continue
+						}
+
+						if (action.type === "add")
+							await handle.addExternalContext(action.paths)
+						else if (action.type === "addAndCopy")
+							await handle.addExternalContextAndCopy(action.paths)
+						else
+							await handle.removeExternalContext(action.paths)
+					} catch (error) {
+						setGlobalNotice({
+							kind: "error",
+							message: getErrorMessage(
+								error,
+								appSettings.locale,
+							),
+						})
+					}
 				}
 			})()
 		},
-		[],
+		[appSettings.locale],
 	)
 
 	const addTab = useCallback(
@@ -493,10 +696,15 @@ export function App() {
 					nextTab,
 					currentTabs.length,
 				)
-				updateTabsState([
-					...currentTabs,
-					nextTab,
-				])
+				const latestTabs = tabsRef.current
+				if (!latestTabs.some(tab => tab.id === nextTab.id)) {
+					const nextTabs = [
+						...latestTabs,
+						nextTab,
+					]
+					updateTabsState(nextTabs)
+					await persistTabOrder(nextTabs.map(tab => tab.id))
+				}
 				await persistActiveTab(nextTab.id)
 				setGlobalNotice(null)
 			} catch (error) {
@@ -512,6 +720,7 @@ export function App() {
 		[
 			appSettings.locale,
 			persistActiveTab,
+			persistTabOrder,
 			updateTabsState,
 		],
 	)
@@ -531,43 +740,66 @@ export function App() {
 
 			const handle = workspaceHandlesRef.current.get(tabId)
 
-			if (handle !== undefined) {
-				if (!await handle.prepareForTabClose()) {
-					setGlobalNotice({
-						kind: "info",
-						message: translate(
-							appSettings.locale,
-							"workspace.tabBusy",
-						),
-					})
-					return
-				}
-			} else if (tab.rootFolder !== null) {
-				if (appSettings.closeExplorerOnFolderClose) {
-					await closeFolderInExplorer(tab.rootFolder)
-						.catch(() => undefined)
-				}
-
-				await discardProjectOverlayUndo(tab.rootFolder)
-					.catch(() => undefined)
+			if (handle !== undefined && !await handle.prepareForTabClose()) {
+				setGlobalNotice({
+					kind: "info",
+					message: translate(
+						appSettings.locale,
+						"workspace.tabBusy",
+					),
+				})
+				return
 			}
+
+			rootChangeRevisionsRef.current.set(
+				tabId,
+				(rootChangeRevisionsRef.current.get(tabId) ?? 0) + 1,
+			)
 
 			try {
 				await deleteProjectTab(tabId)
-				workspaceHandlesRef.current.delete(tabId)
-				pendingExternalContextActionsRef.current.delete(tabId)
 
-				const nextTabs = currentTabs.filter(current => current.id !== tabId)
+				if (tab.rootFolder !== null) {
+					if (appSettings.closeExplorerOnFolderClose) {
+						await closeFolderInExplorer(tab.rootFolder)
+							.catch(() => undefined)
+					}
+
+					await discardProjectOverlayUndo(tab.rootFolder)
+						.catch(() => undefined)
+				}
+
+				workspaceHandlesRef.current.delete(tabId)
+				pendingExternalSelectionActionsRef.current.delete(tabId)
+				rootChangeRevisionsRef.current.delete(tabId)
+
+				if (ignoreDialogTabIdRef.current === tabId) {
+					updateIgnoreDialogState(
+						tabId,
+						false,
+					)
+				}
+
+				const latestTabs = tabsRef.current
+				const latestTabIndex = latestTabs.findIndex(current => current.id === tabId)
+				const nextTabs = latestTabs.filter(current => current.id !== tabId)
 				updateTabsState(nextTabs)
-				await saveProjectTabOrder(nextTabs.map(current => current.id))
+				await persistTabOrder(nextTabs.map(current => current.id))
 
 				if (activeTabIdRef.current === tabId) {
-					const nextActiveTab = nextTabs[Math.min(
-						tabIndex,
-						nextTabs.length - 1,
+					const currentTabsAfterPersistence = tabsRef.current
+					const nextActiveTab = currentTabsAfterPersistence[Math.min(
+						Math.max(
+							0,
+							latestTabIndex,
+						),
+						currentTabsAfterPersistence.length - 1,
 					)]
 
-					if (nextActiveTab !== undefined)
+					if (
+						nextActiveTab !== undefined &&
+						activeTabIdRef.current === tabId
+					)
 						await persistActiveTab(nextActiveTab.id)
 				}
 			} catch (error) {
@@ -584,6 +816,8 @@ export function App() {
 			appSettings.closeExplorerOnFolderClose,
 			appSettings.locale,
 			persistActiveTab,
+			persistTabOrder,
+			updateIgnoreDialogState,
 			updateTabsState,
 		],
 	)
@@ -609,9 +843,16 @@ export function App() {
 			updateTabsState(nextTabs)
 
 			try {
-				await saveProjectTabOrder(nextTabs.map(tab => tab.id))
+				await persistTabOrder(nextTabs.map(tab => tab.id))
 			} catch (error) {
-				updateTabsState([...previousTabs])
+				const latestTabs = tabsRef.current
+				const stillMatchesFailedOrder = latestTabs.length === nextTabs.length &&
+					latestTabs.every((
+						tab,
+						index,
+					) => tab.id === nextTabs[index]?.id)
+				if (stillMatchesFailedOrder)
+					updateTabsState([...previousTabs])
 				setGlobalNotice({
 					kind: "error",
 					message: getErrorMessage(
@@ -623,6 +864,7 @@ export function App() {
 		},
 		[
 			appSettings.locale,
+			persistTabOrder,
 			updateTabsState,
 		],
 	)
@@ -641,7 +883,8 @@ export function App() {
 			}
 
 			const currentTabs = tabsRef.current
-			const rootedTabs = currentTabs.filter(tab => tab.rootFolder !== null)
+			const rootedTabs = currentTabs.filter((tab): tab is ProjectTab & { rootFolder: string } =>
+				tab.rootFolder !== null)
 			const roots = rootedTabs.flatMap(tab =>
 				tab.rootFolder === null ?
 					[] :
@@ -669,6 +912,30 @@ export function App() {
 					await openFolderInExplorer(matchingTab.rootFolder)
 
 				return
+			}
+
+			if (
+				appSettings.hideOpenProjectSubfolders &&
+				roots.length > 0
+			) {
+				const parentIndex = await findProjectForPaths(
+					roots,
+					[path],
+				)
+
+				if (parentIndex !== null) {
+					const parentTab = rootedTabs[parentIndex]
+
+					if (parentTab !== undefined) {
+						await persistActiveTab(parentTab.id)
+						setGlobalNotice(null)
+
+						if (appSettings.openExplorerOnProjectOpen)
+							await openFolderInExplorer(parentTab.rootFolder)
+
+						return
+					}
+				}
 			}
 
 			const activeTab = currentTabs.find(tab => tab.id === activeTabIdRef.current)
@@ -706,10 +973,15 @@ export function App() {
 				nextTab,
 				currentTabs.length,
 			)
-			updateTabsState([
-				...currentTabs,
-				nextTab,
-			])
+			const latestTabs = tabsRef.current
+			const nextTabs = latestTabs.some(tab => tab.id === nextTab.id) ?
+				latestTabs :
+				[
+					...latestTabs,
+					nextTab,
+				]
+			updateTabsState(nextTabs)
+			await persistTabOrder(nextTabs.map(tab => tab.id))
 			await persistActiveTab(nextTab.id)
 			setGlobalNotice(null)
 
@@ -717,18 +989,35 @@ export function App() {
 				await openFolderInExplorer(path)
 		},
 		[
+			appSettings.hideOpenProjectSubfolders,
 			appSettings.locale,
 			appSettings.openExplorerOnProjectOpen,
 			handleRootFolderChange,
 			persistActiveTab,
+			persistTabOrder,
 			updateTabsState,
 		],
 	)
 
-	const routeExternalContextAction = useCallback(
+	const updateWorkspaceContextMode = useCallback(
+		(
+			tabId: string,
+			mode: ContextMode,
+		): void => {
+			setWorkspaceContextModes(current => current[tabId] === mode ?
+				current :
+				{
+					...current,
+					[tabId]: mode,
+				})
+		},
+		[],
+	)
+
+	const routeExternalSelectionAction = useCallback(
 		async (
 			paths: string[],
-			type: PendingExternalContextAction["type"],
+			type: PendingExternalSelectionAction["type"],
 		): Promise<void> => {
 			const rootedTabs = tabsRef.current.filter(tab => tab.rootFolder !== null)
 			const roots = rootedTabs.flatMap(tab =>
@@ -758,27 +1047,74 @@ export function App() {
 			if (matchingTab === undefined)
 				return
 
-			await persistActiveTab(matchingTab.id)
+			const openIgnoreTabId = ignoreDialogTabIdRef.current
+
+			if (type === "addAndCopy" && openIgnoreTabId === matchingTab.id) {
+				setGlobalNotice({
+					kind: "warning",
+					message: translate(
+						appSettings.locale,
+						"workspace.externalContextCopyUnavailableInIgnore",
+					),
+				})
+				return
+			}
+
+			const target: PendingExternalSelectionAction["target"] = openIgnoreTabId === matchingTab.id ?
+				"ignore" :
+				"context"
+
+			if (
+				target === "context" &&
+				workspaceContextModes[matchingTab.id] !== "create"
+			) {
+				setGlobalNotice({
+					kind: "warning",
+					message: translate(
+						appSettings.locale,
+						"workspace.externalContextUnavailableOutsideCreate",
+					),
+				})
+				return
+			}
+
+			// Keep an Ignore dialog that belongs to another project open. External
+			// context actions can be processed by the mounted workspace in the
+			// background without changing which project is in Ignore mode.
+			if (openIgnoreTabId === null || openIgnoreTabId === matchingTab.id)
+				await persistActiveTab(matchingTab.id)
+
 			setGlobalNotice(null)
 			const handle = workspaceHandlesRef.current.get(matchingTab.id)
 
 			if (handle !== undefined) {
-				if (type === "add") {
-					await handle.addExternalContext(paths)
+				if (target === "ignore") {
+					if (type === "add")
+						await handle.addExternalIgnore(paths)
+					else
+						await handle.removeExternalIgnore(paths)
+
 					return
 				}
 
-				await handle.removeExternalContext(paths)
+				if (type === "add")
+					await handle.addExternalContext(paths)
+				else if (type === "addAndCopy")
+					await handle.addExternalContextAndCopy(paths)
+				else
+					await handle.removeExternalContext(paths)
+
 				return
 			}
 
-			const pending = pendingExternalContextActionsRef.current.get(matchingTab.id) ?? []
+			const pending = pendingExternalSelectionActionsRef.current.get(matchingTab.id) ?? []
 
 			pending.push({
 				type,
+				target,
 				paths,
 			})
-			pendingExternalContextActionsRef.current.set(
+			pendingExternalSelectionActionsRef.current.set(
 				matchingTab.id,
 				pending,
 			)
@@ -786,23 +1122,694 @@ export function App() {
 		[
 			appSettings.locale,
 			persistActiveTab,
+			workspaceContextModes,
 		],
 	)
 
-	const addExternalContext = useCallback(
-		(paths: string[]) => routeExternalContextAction(
-			paths,
-			"add",
-		),
-		[routeExternalContextAction],
+	const requestProjectApplySelection = useCallback(
+		(selection: PendingProjectApplySelection): Promise<ProjectApplySelection> => {
+			projectApplySelectionResolverRef.current?.({ type: "cancel" })
+			setPendingProjectApplySelection(selection)
+
+			return new Promise(resolve => {
+				projectApplySelectionResolverRef.current = resolve
+			})
+		},
+		[],
 	)
 
-	const removeExternalContext = useCallback(
-		(paths: string[]) => routeExternalContextAction(
-			paths,
-			"remove",
-		),
-		[routeExternalContextAction],
+	const resolveProjectApplySelection = useCallback(
+		(selection: ProjectApplySelection) => {
+			const resolve = projectApplySelectionResolverRef.current
+
+			projectApplySelectionResolverRef.current = null
+			setPendingProjectApplySelection(null)
+			resolve?.(selection)
+		},
+		[],
+	)
+
+	const runRoutingAnalysis = useCallback(
+		async <T,>(operation: () => Promise<T>): Promise<T> => operation(),
+		[],
+	)
+
+	const setProjectSwitchNotice = useCallback(
+		(
+			kind: RoutedApplyNoticeKind,
+			tab: ProjectTab,
+			undoReference: OperationUndoReference | null = null,
+		) => {
+			setRoutedApplyNotice({
+				kind,
+				projectName: getProjectName(tab.rootFolder),
+				tabId: tab.id,
+				undoReference,
+			})
+		},
+		[],
+	)
+
+	const routeApplyDrop = useCallback(
+		async (
+			sourceTabId: string,
+			paths: string[],
+			temporaryRoot: string | null,
+		): Promise<void> => {
+			if (isRoutingApplyRef.current) {
+				if (temporaryRoot !== null)
+					await cleanupNativeDrop(temporaryRoot).catch(() => undefined)
+
+				setGlobalNotice({
+					kind: "info",
+					message: translate(
+						appSettings.locale,
+						"workspace.applyBusy",
+					),
+				})
+				return
+			}
+
+			const sourceTab = tabsRef.current.find(tab => tab.id === sourceTabId)
+
+			if (sourceTab?.rootFolder === null || sourceTab === undefined) {
+				if (temporaryRoot !== null)
+					await cleanupNativeDrop(temporaryRoot).catch(() => undefined)
+
+				setGlobalNotice({
+					kind: "warning",
+					message: translate(
+						appSettings.locale,
+						"workspace.selectRootForApply",
+					),
+				})
+				return
+			}
+
+			const uniquePaths = [...new Set(paths)]
+
+			if (uniquePaths.length === 0) {
+				if (temporaryRoot !== null)
+					await cleanupNativeDrop(temporaryRoot).catch(() => undefined)
+				return
+			}
+
+			isRoutingApplyRef.current = true
+			setIsRoutingApply(true)
+			setRoutingApplyTabId(sourceTabId)
+			setGlobalNotice(null)
+			setRoutedApplyNotice(null)
+
+			const appendUndoTabs = new Set<string>()
+			let routedTabId: string | null = null
+			let routedApplication: {
+				tabId: string
+				undoReference: OperationUndoReference
+			} | null = null
+
+			try {
+				const rootedTabs = tabsRef.current.filter((tab): tab is ProjectTab & { rootFolder: string } =>
+					tab.rootFolder !== null)
+
+				if (appSettings.workMode === "git") {
+					if (uniquePaths.length !== 1) {
+						setGlobalNotice({
+							kind: "warning",
+							message: translate(
+								appSettings.locale,
+								"workspace.gitModeSinglePatch",
+							),
+						})
+						return
+					}
+
+					const patchPath = uniquePaths[0]
+
+					if (patchPath === undefined || !isGitPatchPath(patchPath)) {
+						setGlobalNotice({
+							kind: "warning",
+							message: translate(
+								appSettings.locale,
+								"workspace.gitModePatchOnly",
+							),
+						})
+						return
+					}
+
+					const analyses = (await runRoutingAnalysis(() => mapFilesystemHeavySerially(rootedTabs, async tab => {
+						try {
+							const preview = await prepareGitPatch(
+								tab.rootFolder,
+								patchPath,
+							)
+							const handle = workspaceHandlesRef.current.get(tab.id)
+
+							return {
+								tab,
+								preview,
+								available: handle?.canAcceptRoutedApply() === true,
+							} satisfies GitProjectAnalysis
+						} catch {
+							return null
+						}
+					}))).filter((analysis): analysis is GitProjectAnalysis => analysis !== null)
+
+					if (analyses.length === 0) {
+						setGlobalNotice({
+							kind: "warning",
+							message: translate(
+								appSettings.locale,
+								"workspace.gitPatchNoOpenProject",
+							),
+						})
+						return
+					}
+
+					let selectedAnalysis: GitProjectAnalysis | undefined
+
+					if (analyses.length === 1)
+						selectedAnalysis = analyses[0]
+					else {
+						const projects = analyses.map(analysis => ({
+							tabId: analysis.tab.id,
+							projectName: getProjectName(analysis.tab.rootFolder),
+							destinationPath: null,
+							destinationCount: 1,
+							available: analysis.available,
+							unavailableReason: analysis.available ?
+								undefined :
+								"busy" as const,
+						}))
+
+						if (!projects.some(project => project.available)) {
+							setGlobalNotice({
+								kind: "warning",
+								message: translate(
+									appSettings.locale,
+									"projectRoute.projectUnavailable",
+								),
+							})
+							return
+						}
+
+						const selection = await requestProjectApplySelection({
+							mode: "git",
+							sourceLabel: getSourceLabel(patchPath),
+							projects,
+							allowCurrentRoot: false,
+							currentProjectName: getProjectName(sourceTab.rootFolder),
+						})
+
+						if (selection.type !== "project")
+							return
+
+						selectedAnalysis = analyses.find(analysis => analysis.tab.id === selection.tabId)
+					}
+
+					if (selectedAnalysis === undefined || !selectedAnalysis.available) {
+						setGlobalNotice({
+							kind: "warning",
+							message: translate(
+								appSettings.locale,
+								"projectRoute.projectUnavailable",
+							),
+						})
+						return
+					}
+
+					const handle = workspaceHandlesRef.current.get(selectedAnalysis.tab.id)
+
+					if (handle === undefined || !handle.canAcceptRoutedApply()) {
+						setGlobalNotice({
+							kind: "warning",
+							message: translate(
+								appSettings.locale,
+								"projectRoute.projectUnavailable",
+							),
+						})
+						return
+					}
+
+					const didSwitch = activeTabIdRef.current !== selectedAnalysis.tab.id
+
+					if (didSwitch) {
+						await persistActiveTab(selectedAnalysis.tab.id)
+						routedTabId = selectedAnalysis.tab.id
+						setProjectSwitchNotice(
+							"git_preview",
+							selectedAnalysis.tab,
+						)
+					}
+
+					const outcome = await handle.beginPreparedGitPatch(
+						patchPath,
+						selectedAnalysis.preview,
+					)
+
+					if (didSwitch) {
+						if (outcome.status === "success") {
+							routedApplication = {
+								tabId: selectedAnalysis.tab.id,
+								undoReference: outcome.undoReference,
+							}
+							setProjectSwitchNotice(
+								"applied",
+								selectedAnalysis.tab,
+								outcome.undoReference,
+							)
+						} else
+							setRoutedApplyNotice(null)
+					}
+
+					return
+				}
+
+				if (uniquePaths.some(isGitPatchPath)) {
+					setGlobalNotice({
+						kind: "warning",
+						message: translate(
+							appSettings.locale,
+							"workspace.filesModePatchRejected",
+						),
+					})
+					return
+				}
+
+				for (const path of uniquePaths) {
+					const sourceLabel = getSourceLabel(path)
+					const analyses = (await runRoutingAnalysis(() => mapFilesystemHeavySerially(rootedTabs, async tab => {
+						try {
+							const plan = await prepareProjectOverlay(
+								tab.rootFolder,
+								[path],
+							)
+							const concreteCandidates = getConcreteOverlayCandidates(plan)
+							const concreteCount = getConcreteOverlayCount(
+								plan,
+								concreteCandidates,
+							)
+							const handle = workspaceHandlesRef.current.get(tab.id)
+
+							return {
+								tab,
+								plan,
+								concreteCandidates,
+								concreteCount,
+								available: handle?.canAcceptRoutedApply() === true,
+							} satisfies FileProjectAnalysis
+						} catch {
+							return null
+						}
+					}))).filter((analysis): analysis is FileProjectAnalysis => analysis !== null)
+
+					const sourceAnalysis = analyses.find(analysis => analysis.tab.id === sourceTabId)
+					const rootCandidate = sourceAnalysis?.plan.rootCandidate ?? null
+					const sourceHandle = workspaceHandlesRef.current.get(sourceTabId)
+					const allowCurrentRoot = rootCandidate !== null &&
+						sourceAnalysis?.available === true &&
+						sourceHandle !== undefined
+					const totalConcreteDestinations = analyses.reduce(
+						(
+							total,
+							analysis,
+						) => total + analysis.concreteCount,
+						0,
+					)
+					type StrongProjectAnalysis = FileRoutingProjectEvidence & {
+						analysis: FileProjectAnalysis
+					}
+					const strongProjectCandidates = analyses.flatMap((analysis): StrongProjectAnalysis[] => {
+						if (
+							!analysis.available ||
+							analysis.plan.ambiguityLimitExceeded ||
+							analysis.concreteCount !== 1
+						)
+							return []
+
+						const candidate = analysis.concreteCandidates[0]
+
+						if (candidate === undefined)
+							return []
+
+						return [{
+							analysis,
+							projectName: getProjectName(analysis.tab.rootFolder),
+							sourceLabel,
+							fileCount: analysis.plan.fileCount,
+							candidate,
+						}]
+					})
+					const strongProjectMatch = selectUniqueStrongFileRoutingProject<StrongProjectAnalysis>(strongProjectCandidates)
+
+					const applyRootWithConfirmation = async (): Promise<void> => {
+						if (
+							!allowCurrentRoot ||
+							sourceAnalysis === undefined ||
+							rootCandidate === null ||
+							sourceHandle === undefined
+						) {
+							setGlobalNotice({
+								kind: "warning",
+								message: translate(
+									appSettings.locale,
+									"projectRoute.noDestination",
+								),
+							})
+							return
+						}
+
+						const didSwitch = activeTabIdRef.current !== sourceTabId
+
+						if (didSwitch) {
+							await persistActiveTab(sourceTabId)
+							routedTabId = sourceTabId
+							setProjectSwitchNotice(
+								"resolve",
+								sourceTab,
+							)
+						}
+
+						const rootPlan = withOnlyOverlayCandidates(
+							sourceAnalysis.plan,
+							[rootCandidate],
+						)
+						const outcome = await sourceHandle.beginPreparedOverlayResolution(
+							[path],
+							sourceLabel,
+							rootPlan,
+							appendUndoTabs.has(sourceTabId),
+						)
+
+						if (outcome.status === "success") {
+							appendUndoTabs.add(sourceTabId)
+
+							if (didSwitch || routedTabId === sourceTabId) {
+								routedApplication = {
+									tabId: sourceTabId,
+									undoReference: outcome.undoReference,
+								}
+								setProjectSwitchNotice(
+									"applied",
+									sourceTab,
+									outcome.undoReference,
+								)
+							}
+						} else if (didSwitch && outcome.status === "no_op") {
+							if (routedApplication?.tabId !== sourceTabId) {
+								setProjectSwitchNotice(
+									"already_applied",
+									sourceTab,
+								)
+							}
+						} else if (didSwitch && routedApplication?.tabId !== sourceTabId)
+							setRoutedApplyNotice(null)
+					}
+
+					const applyProjectAnalysis = async (analysis: FileProjectAnalysis): Promise<void> => {
+						const handle = workspaceHandlesRef.current.get(analysis.tab.id)
+
+						if (
+							!analysis.available ||
+							handle === undefined ||
+							!handle.canAcceptRoutedApply()
+						) {
+							setGlobalNotice({
+								kind: "warning",
+								message: translate(
+									appSettings.locale,
+									"projectRoute.projectUnavailable",
+								),
+							})
+							return
+						}
+
+						const didSwitch = activeTabIdRef.current !== analysis.tab.id
+
+						if (didSwitch) {
+							await persistActiveTab(analysis.tab.id)
+							routedTabId = analysis.tab.id
+
+							if (analysis.concreteCount > 1) {
+								setProjectSwitchNotice(
+									"resolve",
+									analysis.tab,
+								)
+							}
+						}
+
+						let outcome: PreparedApplyOutcome
+
+						if (analysis.concreteCount === 1) {
+							const candidate = analysis.concreteCandidates[0]
+
+							if (candidate === undefined) {
+								setGlobalNotice({
+									kind: "warning",
+									message: translate(
+										appSettings.locale,
+										"projectRoute.noDestination",
+									),
+								})
+								return
+							}
+
+							outcome = await handle.applyPreparedOverlay(
+								[path],
+								candidate,
+								analysis.plan.sourceFingerprint,
+								analysis.plan.routingFingerprint,
+								appendUndoTabs.has(analysis.tab.id),
+							)
+						} else {
+							if (analysis.plan.ambiguityLimitExceeded) {
+								setGlobalNotice({
+									kind: "warning",
+									message: translate(
+										appSettings.locale,
+										"workspace.applyTooAmbiguous",
+										{
+											source: sourceLabel,
+											count: analysis.concreteCount,
+											limit: analysis.plan.ambiguityLimit,
+										},
+									),
+								})
+								if (didSwitch)
+									setRoutedApplyNotice(null)
+								return
+							}
+
+							outcome = await handle.beginPreparedOverlayResolution(
+								[path],
+								sourceLabel,
+								withOnlyOverlayCandidates(
+									analysis.plan,
+									analysis.concreteCandidates,
+								),
+								appendUndoTabs.has(analysis.tab.id),
+							)
+						}
+
+						if (outcome.status === "success") {
+							appendUndoTabs.add(analysis.tab.id)
+
+							if (didSwitch || routedTabId === analysis.tab.id) {
+								routedApplication = {
+									tabId: analysis.tab.id,
+									undoReference: outcome.undoReference,
+								}
+								setProjectSwitchNotice(
+									"applied",
+									analysis.tab,
+									outcome.undoReference,
+								)
+							}
+						} else if (didSwitch && outcome.status === "no_op") {
+							if (routedApplication?.tabId !== analysis.tab.id) {
+								setProjectSwitchNotice(
+									"already_applied",
+									analysis.tab,
+								)
+							}
+						} else if (didSwitch && routedApplication?.tabId !== analysis.tab.id)
+							setRoutedApplyNotice(null)
+					}
+
+					if (strongProjectMatch !== null) {
+						await applyProjectAnalysis(strongProjectMatch.analysis)
+						continue
+					}
+
+					if (totalConcreteDestinations === 0) {
+						await applyRootWithConfirmation()
+						continue
+					}
+
+					if (totalConcreteDestinations === 1) {
+						const uniqueAnalysis = analyses.find(analysis => analysis.concreteCount === 1)
+
+						if (uniqueAnalysis?.available === true) {
+							await applyProjectAnalysis(uniqueAnalysis)
+							continue
+						}
+					}
+
+					const projectAnalyses = analyses
+						.map(analysis => {
+							if (
+								analysis.tab.id !== sourceTabId ||
+								!allowCurrentRoot ||
+								rootCandidate === null ||
+								analysis.plan.ambiguityLimitExceeded
+							)
+								return analysis
+
+							const candidates = analysis.concreteCandidates.filter(candidate =>
+								!isSameOverlayCandidate(
+									candidate,
+									rootCandidate,
+								))
+
+							return {
+								...analysis,
+								concreteCandidates: candidates,
+								concreteCount: candidates.length,
+							}
+						})
+						.filter(analysis => analysis.concreteCount > 0)
+					const projects = projectAnalyses.map(analysis => ({
+						tabId: analysis.tab.id,
+						projectName: getProjectName(analysis.tab.rootFolder),
+						destinationPath: analysis.concreteCount === 1 ?
+							analysis.concreteCandidates[0]?.destinationRelativePath ?? null :
+							null,
+						destinationCount: analysis.concreteCount,
+						available: analysis.available && !analysis.plan.ambiguityLimitExceeded,
+						unavailableReason: analysis.plan.ambiguityLimitExceeded ?
+							"tooAmbiguous" as const :
+							analysis.available ?
+								undefined :
+								"busy" as const,
+					}))
+
+					if (!allowCurrentRoot && !projects.some(project => project.available)) {
+						setGlobalNotice({
+							kind: "warning",
+							message: translate(
+								appSettings.locale,
+								"projectRoute.noDestination",
+							),
+						})
+						continue
+					}
+
+					const selection = await requestProjectApplySelection({
+						mode: "files",
+						sourceLabel,
+						projects,
+						allowCurrentRoot,
+						currentProjectName: getProjectName(sourceTab.rootFolder),
+					})
+
+					if (selection.type === "cancel")
+						continue
+
+					if (selection.type === "root") {
+						await applyRootWithConfirmation()
+						continue
+					}
+
+					const selectedAnalysis = projectAnalyses.find(analysis => analysis.tab.id === selection.tabId)
+
+					if (selectedAnalysis === undefined) {
+						setGlobalNotice({
+							kind: "warning",
+							message: translate(
+								appSettings.locale,
+								"projectRoute.noDestination",
+							),
+						})
+						continue
+					}
+
+					await applyProjectAnalysis(selectedAnalysis)
+				}
+			} catch (error) {
+				setGlobalNotice({
+					kind: "error",
+					message: getErrorMessage(
+						error,
+						appSettings.locale,
+					),
+				})
+			} finally {
+				projectApplySelectionResolverRef.current = null
+				setPendingProjectApplySelection(null)
+				isRoutingApplyRef.current = false
+				setIsRoutingApply(false)
+				setRoutingApplyTabId(null)
+
+				if (temporaryRoot !== null)
+					await cleanupNativeDrop(temporaryRoot).catch(() => undefined)
+			}
+		},
+		[
+			appSettings.locale,
+			appSettings.workMode,
+			persistActiveTab,
+			requestProjectApplySelection,
+			runRoutingAnalysis,
+			setProjectSwitchNotice,
+		],
+	)
+
+	const undoRoutedApplication = useCallback(
+		async (): Promise<void> => {
+			const currentNotice = routedApplyNotice
+
+			if (currentNotice === null || currentNotice.undoReference === null)
+				return
+
+			const handle = workspaceHandlesRef.current.get(currentNotice.tabId)
+
+			if (handle === undefined) {
+				setGlobalNotice({
+					kind: "warning",
+					message: translate(
+						appSettings.locale,
+						"projectRoute.undoUnavailable",
+					),
+				})
+				return
+			}
+
+			if (activeTabIdRef.current !== currentNotice.tabId)
+				await persistActiveTab(currentNotice.tabId)
+
+			const undone = await handle.undoApplicationIfLatest(currentNotice.undoReference)
+
+			if (!undone) {
+				setGlobalNotice({
+					kind: "warning",
+					message: translate(
+						appSettings.locale,
+						"projectRoute.undoUnavailable",
+					),
+				})
+				return
+			}
+
+			setRoutedApplyNotice({
+				...currentNotice,
+				kind: "undone",
+				undoReference: null,
+			})
+		},
+		[
+			appSettings.locale,
+			persistActiveTab,
+			routedApplyNotice,
+		],
 	)
 
 	const processExternalActions = useCallback(
@@ -822,24 +1829,37 @@ export function App() {
 					externalActionsRequestedRef.current = false
 
 					while (true) {
-						const actions = await takeExternalActions()
+						const queued = await nextExternalAction()
 
-						if (actions.length === 0)
+						if (queued === null)
 							break
 
-						for (const action of actions) {
-							if (action.type === "openRoot") {
+						const action = queued.action
+
+						try {
+							if (action.type === "openRoot")
 								await openExternalRoot(action.path)
-								continue
+							else {
+								await routeExternalSelectionAction(
+									action.paths,
+									action.type === "addContextAndCopy" ?
+										"addAndCopy" :
+										action.type === "addContext" || action.type === "addIgnore" ?
+											"add" :
+											"remove",
+								)
 							}
-
-							if (action.type === "addContext") {
-								await addExternalContext(action.paths)
-								continue
-							}
-
-							await removeExternalContext(action.paths)
+						} catch (error) {
+							setGlobalNotice({
+								kind: "error",
+								message: getErrorMessage(
+									error,
+									appSettings.locale,
+								),
+							})
 						}
+
+						await ackExternalAction(queued.id)
 					}
 				}
 			} catch (error) {
@@ -855,11 +1875,58 @@ export function App() {
 			}
 		},
 		[
-			addExternalContext,
 			appSettings.locale,
 			openExternalRoot,
-			removeExternalContext,
+			routeExternalSelectionAction,
 			tabsReady,
+		],
+	)
+
+	useEffect(
+		() => {
+			if (!tabsReady || !appSettings.isReady)
+				return
+
+			const openProjectRoots = tabs.flatMap(tab =>
+				tab.rootFolder === null ?
+					[] :
+					[tab.rootFolder])
+			const contextProjectRoots = tabs.flatMap(tab =>
+				tab.rootFolder !== null && workspaceContextModes[tab.id] === "create" ?
+					[tab.rootFolder] :
+					[])
+			const ignoreProjectRoot = ignoreDialogTabId === null ?
+				null :
+				tabs.find(tab => tab.id === ignoreDialogTabId)?.rootFolder ?? null
+			const write = externalIntegrationWriteQueueRef.current
+				.catch(() => undefined)
+				.then(() => setExternalIntegrationState(
+					openProjectRoots,
+					contextProjectRoots,
+					ignoreProjectRoot,
+					appSettings.hideOpenProjectSubfolders,
+				))
+
+			externalIntegrationWriteQueueRef.current = write.catch(() => undefined)
+			void write.catch(error => {
+				setGlobalNotice({
+					kind: "error",
+					message: getErrorMessage(
+						error,
+						appSettings.locale,
+					),
+				})
+			})
+		},
+		[
+			appSettings,
+			appSettings.hideOpenProjectSubfolders,
+			appSettings.isReady,
+			appSettings.locale,
+			ignoreDialogTabId,
+			tabs,
+			tabsReady,
+			workspaceContextModes,
 		],
 	)
 
@@ -895,6 +1962,8 @@ export function App() {
 						storedTabs :
 						[createProjectTab()]
 					let foundMissingRoot = false
+					let foundDuplicateRoot = false
+					let duplicateActiveTabRedirect: string | null = null
 
 					for (const [index, tab] of nextTabs.entries()) {
 						if (
@@ -904,6 +1973,46 @@ export function App() {
 							continue
 
 						foundMissingRoot = true
+						nextTabs = nextTabs.map(current =>
+							current.id === tab.id ?
+								{
+									...current,
+									rootFolder: null,
+								} :
+								current)
+						await upsertProjectTab(
+							{
+								...tab,
+								rootFolder: null,
+							},
+							index,
+						)
+					}
+
+					const uniqueRootTabs: Array<{ id: string; rootFolder: string }> = []
+
+					for (const [index, tab] of nextTabs.entries()) {
+						if (tab.rootFolder === null)
+							continue
+
+						const duplicateIndex = uniqueRootTabs.length === 0 ?
+							null :
+							await findProjectForRoot(
+								uniqueRootTabs.map(item => item.rootFolder),
+								tab.rootFolder,
+							)
+
+						if (duplicateIndex === null) {
+							uniqueRootTabs.push({
+								id: tab.id,
+								rootFolder: tab.rootFolder,
+							})
+							continue
+						}
+
+						foundDuplicateRoot = true
+						if (tab.id === storedActiveTabId)
+							duplicateActiveTabRedirect = uniqueRootTabs[duplicateIndex]?.id ?? null
 						nextTabs = nextTabs.map(current =>
 							current.id === tab.id ?
 								{
@@ -935,7 +2044,8 @@ export function App() {
 					if (cancelled)
 						return
 
-					const nextActiveTab = nextTabs.find(tab => tab.id === storedActiveTabId) ?? nextTabs[0]
+					const desiredActiveTabId = duplicateActiveTabRedirect ?? storedActiveTabId
+					const nextActiveTab = nextTabs.find(tab => tab.id === desiredActiveTabId) ?? nextTabs[0]
 
 					if (nextActiveTab === undefined)
 						throw new Error("No project tab could be initialized.")
@@ -950,6 +2060,16 @@ export function App() {
 							message: translate(
 								appSettings.locale,
 								"workspace.savedRootMissing",
+							),
+						})
+					}
+
+					if (!foundMissingRoot && foundDuplicateRoot) {
+						setGlobalNotice({
+							kind: "info",
+							message: translate(
+								appSettings.locale,
+								"workspace.projectAlreadyOpen",
 							),
 						})
 					}
@@ -1053,6 +2173,10 @@ export function App() {
 		],
 	)
 
+	const closeExplorerOnAppExit = appSettings.closeExplorerOnAppExit
+	const flushAppSettingsWrites = appSettings.flushPendingWrites
+	const appLocale = appSettings.locale
+
 	useEffect(
 		() => {
 			let unlisten: (() => void) | undefined
@@ -1061,14 +2185,6 @@ export function App() {
 
 			async function subscribe(): Promise<void> {
 				const disposer = await appWindow.onCloseRequested(async event => {
-					const pendingSectionSaves = [...sectionSaveQueuesRef.current.values()]
-
-					if (
-						!appSettings.closeExplorerOnAppExit &&
-						pendingSectionSaves.length === 0
-					)
-						return
-
 					event.preventDefault()
 
 					if (isClosingAppRef.current)
@@ -1076,27 +2192,47 @@ export function App() {
 
 					isClosingAppRef.current = true
 
-					await Promise.allSettled(pendingSectionSaves)
-
-					if (appSettings.closeExplorerOnAppExit) {
-						const roots = tabsRef.current.flatMap(tab =>
-							tab.rootFolder === null ?
-								[] :
-								[tab.rootFolder])
-
-						for (const root of new Set(roots))
-							await closeFolderInExplorer(root).catch(() => undefined)
-					}
-
 					try {
-						await appWindow.destroy()
+						for (const handle of workspaceHandlesRef.current.values()) {
+							if (!await handle.prepareForTabClose()) {
+								setGlobalNotice({
+									kind: "info",
+									message: translate(
+										appLocale,
+										"workspace.tabBusy",
+									),
+								})
+								isClosingAppRef.current = false
+								return
+							}
+						}
+
+						await flushAppSettingsWrites()
+						await flushProjectTabWrites()
+						await Promise.allSettled([
+							tabOrderSaveQueueRef.current,
+							activeTabSaveQueueRef.current,
+							externalIntegrationWriteQueueRef.current,
+						])
+
+						if (closeExplorerOnAppExit) {
+							const roots = tabsRef.current.flatMap(tab =>
+								tab.rootFolder === null ?
+									[] :
+									[tab.rootFolder])
+
+							for (const root of new Set(roots))
+								await closeFolderInExplorer(root).catch(() => undefined)
+						}
+
+						await destroyMainWindow()
 					} catch (error) {
 						isClosingAppRef.current = false
 						setGlobalNotice({
 							kind: "error",
 							message: getErrorMessage(
 								error,
-								appSettings.locale,
+								appLocale,
 							),
 						})
 					}
@@ -1115,7 +2251,7 @@ export function App() {
 					kind: "error",
 					message: getErrorMessage(
 						error,
-						appSettings.locale,
+						appLocale,
 					),
 				})
 			})
@@ -1126,9 +2262,26 @@ export function App() {
 			}
 		},
 		[
-			appSettings.closeExplorerOnAppExit,
-			appSettings.locale,
+			appLocale,
+			closeExplorerOnAppExit,
+			flushAppSettingsWrites,
 		],
+	)
+
+	const openSettings = useCallback(
+		() => {
+			const ignoreTabId = ignoreDialogTabIdRef.current
+
+			if (ignoreTabId !== null) {
+				updateIgnoreDialogState(
+					ignoreTabId,
+					false,
+				)
+			}
+
+			setIsSettingsOpen(true)
+		},
+		[updateIgnoreDialogState],
 	)
 
 	const closeSettings = useCallback(
@@ -1142,124 +2295,221 @@ export function App() {
 	const appReady = appSettings.isReady && tabsReady
 
 	return (
-		<main className={styles.page}>
-			<div className={styles.shell}>
-				<header className={styles.header}>
-					<h1 className={styles.title}>
-						{translate(
-							appSettings.locale,
-							"app.name",
-						)}
-					</h1>
+		<>
+			<main
+				inert={!appReady}
+				aria-busy={!appReady}
+				className={styles.page}
+			>
+				<OverlayScrollbarManager />
+				<div className={styles.shell}>
+					<header className={styles.header}>
+						<h1 className={styles.title}>
+							{translate(
+								appSettings.locale,
+								"app.name",
+							)}
+						</h1>
 
-					<div className={styles.headerActions}>
-						{appVersion && (
-							<div className={styles.version}>
-								v{appVersion}
+						<div className={styles.headerActions}>
+							{appVersion && (
+								<div className={styles.version}>
+									v{appVersion}
+								</div>
+							)}
+
+							<button
+								type="button"
+								aria-label={translate(
+									appSettings.locale,
+									"app.settings.open",
+								)}
+								title={translate(
+									appSettings.locale,
+									"settings.title",
+								)}
+								className={styles.settingsButton}
+								disabled={!appReady || isRoutingApply || isSettingsOperationBusy}
+								onClick={openSettings}
+							>
+								<Settings
+									size={15}
+									strokeWidth={2}
+									aria-hidden="true"
+								/>
+							</button>
+						</div>
+					</header>
+
+					{tabsReady && tabs.length > 0 && (
+						<ProjectTabs
+							tabs={tabs}
+							activeTabId={activeTabId}
+							locale={appSettings.locale}
+							disabled={!appReady || ignoreDialogTabId !== null || pendingProjectApplySelection !== null}
+							onSelect={id => void persistActiveTab(id)}
+							onAdd={() => void addTab()}
+							onClose={id => void closeTab(id)}
+							onMove={(
+								sourceId,
+								insertionIndex,
+							) => void moveTab(
+								sourceId,
+								insertionIndex,
+							)}
+						/>
+					)}
+
+					<div className={styles.workspaceStage}>
+						{displayedNotice && (
+							<Notice
+								kind={displayedNotice.kind}
+								message={displayedNotice.message}
+								details={displayedNotice.details}
+							/>
+						)}
+
+						{routedApplyNotice !== null && (
+							<div
+								className={styles.routedNotice({
+									success: routedApplyNotice.kind === "applied" || routedApplyNotice.kind === "undone",
+								})}
+								role="status"
+							>
+								<span className={styles.routedNoticeText}>
+									{translate(
+										appSettings.locale,
+										getRoutedApplyMessageKey(routedApplyNotice.kind),
+										{ project: routedApplyNotice.projectName },
+									)}
+								</span>
+
+								{routedApplyNotice.undoReference !== null && (
+									<button
+										type="button"
+										className={styles.routedUndoButton}
+										onClick={() => void undoRoutedApplication()}
+									>
+										{translate(
+											appSettings.locale,
+											"projectRoute.undo",
+										)}
+									</button>
+								)}
 							</div>
 						)}
 
-						<button
-							type="button"
-							aria-label={translate(
-								appSettings.locale,
-								"app.settings.open",
-							)}
-							title={translate(
-								appSettings.locale,
-								"settings.title",
-							)}
-							className={styles.settingsButton}
-							onClick={() => setIsSettingsOpen(true)}
-						>
-							<Settings
-								size={15}
-								strokeWidth={2}
-								aria-hidden="true"
+						{tabs.map(tab => (
+							<ProjectWorkspacePane
+								key={tab.id}
+								tabId={tab.id}
+								active={tab.id === activeTabId}
+								interactionBlocked={isSettingsOpen || pendingProjectApplySelection !== null}
+								routingBusy={routingApplyTabId === tab.id}
+								vscodeAvailable={vscodeAvailable}
+								initialRootFolder={tab.rootFolder}
+								folderSectionExpanded={appSettings.folderSectionExpanded}
+								folderAction={appSettings.folderAction}
+								contextSectionExpanded={appSettings.contextSectionExpanded}
+								applySectionExpanded={appSettings.applySectionExpanded}
+								ignoreDialogOpen={ignoreDialogTabId === tab.id}
+								folderPickerReferenceRoot={lastRootFolder}
+								preferences={preferences}
+								onRootFolderChange={rootFolder => handleRootFolderChange(
+									tab.id,
+									rootFolder,
+								)}
+								onFolderActionChange={action => void appSettings.updateFolderAction(action)}
+								onSectionExpandedChange={(section, expanded) => void handleSectionExpandedChange(
+									section,
+									expanded,
+								)}
+								onContextModeChange={updateWorkspaceContextMode}
+								onRegister={registerWorkspace}
+								onIgnoreDialogOpenChange={open => updateIgnoreDialogState(
+									tab.id,
+									open,
+								)}
+								onApplyDrop={(
+									sourceTabId,
+									paths,
+									temporaryRoot,
+								) => void routeApplyDrop(
+									sourceTabId,
+									paths,
+									temporaryRoot,
+								)}
 							/>
-						</button>
+						))}
 					</div>
-				</header>
+				</div>
 
-				{tabsReady && tabs.length > 0 && (
-					<ProjectTabs
-						tabs={tabs}
-						activeTabId={activeTabId}
+				{pendingProjectApplySelection !== null && (
+					<ProjectApplyDialog
+						mode={pendingProjectApplySelection.mode}
 						locale={appSettings.locale}
+						sourceLabel={pendingProjectApplySelection.sourceLabel}
+						projects={pendingProjectApplySelection.projects}
+						allowCurrentRoot={pendingProjectApplySelection.allowCurrentRoot}
+						currentProjectName={pendingProjectApplySelection.currentProjectName}
 						disabled={!appReady}
-						onSelect={id => void persistActiveTab(id)}
-						onAdd={() => void addTab()}
-						onClose={id => void closeTab(id)}
-						onMove={(
-							sourceId,
-							insertionIndex,
-						) => void moveTab(
-							sourceId,
-							insertionIndex,
-						)}
+						onCancel={() => resolveProjectApplySelection({ type: "cancel" })}
+						onSelectProject={tabId => resolveProjectApplySelection({
+							type: "project",
+							tabId,
+						})}
+						onSelectCurrentRoot={() => resolveProjectApplySelection({ type: "root" })}
 					/>
 				)}
 
-				{displayedNotice && (
-					<Notice
-						kind={displayedNotice.kind}
-						message={displayedNotice.message}
-					/>
-				)}
+				<SettingsDrawer
+					open={isSettingsOpen}
+					locale={appSettings.locale}
+					theme={appSettings.theme}
+					workMode={appSettings.workMode}
+					autoCopyContextAfterAdd={appSettings.autoCopyContextAfterAdd}
+					autoClearAfterExport={appSettings.autoClearAfterExport}
+					contextFilterHistoryLimit={appSettings.contextFilterHistoryLimit}
+					contextHistoryLimit={appSettings.contextHistoryLimit}
+					overlayUndoHistoryLimit={appSettings.overlayUndoHistoryLimit}
+					diagnosticFileLimit={appSettings.diagnosticFileLimit}
+					openExplorerOnAppStart={appSettings.openExplorerOnAppStart}
+					openExplorerOnProjectOpen={appSettings.openExplorerOnProjectOpen}
+					closeExplorerOnFolderClose={appSettings.closeExplorerOnFolderClose}
+					closeExplorerOnAppExit={appSettings.closeExplorerOnAppExit}
+					hideOpenProjectSubfolders={appSettings.hideOpenProjectSubfolders}
+					settingsGeneralExpanded={appSettings.settingsGeneralExpanded}
+					settingsContextExpanded={appSettings.settingsContextExpanded}
+					settingsHistoryExpanded={appSettings.settingsHistoryExpanded}
+					settingsVscodeExpanded={appSettings.settingsVscodeExpanded}
+					settingsExplorerExpanded={appSettings.settingsExplorerExpanded}
+					vscodeAvailable={vscodeAvailable}
+					disabled={!appSettings.isReady || isRoutingApply || isSettingsOperationBusy}
+					onBusyChange={setIsSettingsOperationBusy}
+					onClose={closeSettings}
+					onLocaleChange={nextLocale => void appSettings.updateLocale(nextLocale)}
+					onThemeChange={theme => void appSettings.updateTheme(theme)}
+					onWorkModeChange={workMode => void appSettings.updateWorkMode(workMode)}
+					onAutoCopyContextAfterAddChange={enabled => void appSettings.updateAutoCopyContextAfterAdd(enabled)}
+					onAutoClearAfterExportChange={enabled => void appSettings.updateAutoClearAfterExport(enabled)}
+					onContextFilterHistoryLimitChange={limit => void appSettings.updateContextFilterHistoryLimit(limit)}
+					onContextHistoryLimitChange={limit => void appSettings.updateContextHistoryLimit(limit)}
+					onOverlayUndoHistoryLimitChange={limit => void appSettings.updateOverlayUndoHistoryLimit(limit)}
+					onDiagnosticFileLimitChange={limit => void appSettings.updateDiagnosticFileLimit(limit)}
+					onOpenExplorerOnAppStartChange={enabled => void appSettings.updateOpenExplorerOnAppStart(enabled)}
+					onOpenExplorerOnProjectOpenChange={enabled => void appSettings.updateOpenExplorerOnProjectOpen(enabled)}
+					onCloseExplorerOnFolderCloseChange={enabled => void appSettings.updateCloseExplorerOnFolderClose(enabled)}
+					onCloseExplorerOnAppExitChange={enabled => void appSettings.updateCloseExplorerOnAppExit(enabled)}
+					onHideOpenProjectSubfoldersChange={enabled => void appSettings.updateHideOpenProjectSubfolders(enabled)}
+					onSettingsGeneralExpandedChange={expanded => void appSettings.updateSettingsGeneralExpanded(expanded)}
+					onSettingsContextExpandedChange={expanded => void appSettings.updateSettingsContextExpanded(expanded)}
+					onSettingsHistoryExpandedChange={expanded => void appSettings.updateSettingsHistoryExpanded(expanded)}
+					onSettingsVscodeExpandedChange={expanded => void appSettings.updateSettingsVscodeExpanded(expanded)}
+					onSettingsExplorerExpandedChange={expanded => void appSettings.updateSettingsExplorerExpanded(expanded)}
+				/>
+			</main>
 
-				{tabs.map(tab => (
-					<ProjectWorkspacePane
-						key={tab.id}
-						tabId={tab.id}
-						active={tab.id === activeTabId}
-						interactionBlocked={isSettingsOpen}
-						initialRootFolder={tab.rootFolder}
-						folderSectionExpanded={tab.folderSectionExpanded}
-						contextSectionExpanded={tab.contextSectionExpanded}
-						applySectionExpanded={tab.applySectionExpanded}
-						folderPickerReferenceRoot={lastRootFolder}
-						preferences={preferences}
-						onRootFolderChange={rootFolder => handleRootFolderChange(
-							tab.id,
-							rootFolder,
-						)}
-						onSectionExpandedChange={(section, expanded) => void handleSectionExpandedChange(
-							tab.id,
-							section,
-							expanded,
-						)}
-						onRegister={registerWorkspace}
-					/>
-				))}
-			</div>
-
-			<SettingsDrawer
-				open={isSettingsOpen}
-				locale={appSettings.locale}
-				theme={appSettings.theme}
-				autoCopyContextAfterAdd={appSettings.autoCopyContextAfterAdd}
-				autoClearAfterExport={appSettings.autoClearAfterExport}
-				contextFilterHistoryLimit={appSettings.contextFilterHistoryLimit}
-				contextHistoryLimit={appSettings.contextHistoryLimit}
-				overlayUndoHistoryLimit={appSettings.overlayUndoHistoryLimit}
-				openExplorerOnAppStart={appSettings.openExplorerOnAppStart}
-				openExplorerOnProjectOpen={appSettings.openExplorerOnProjectOpen}
-				closeExplorerOnFolderClose={appSettings.closeExplorerOnFolderClose}
-				closeExplorerOnAppExit={appSettings.closeExplorerOnAppExit}
-				disabled={!appSettings.isReady}
-				onClose={closeSettings}
-				onLocaleChange={nextLocale => void appSettings.updateLocale(nextLocale)}
-				onThemeChange={theme => void appSettings.updateTheme(theme)}
-				onAutoCopyContextAfterAddChange={enabled => void appSettings.updateAutoCopyContextAfterAdd(enabled)}
-				onAutoClearAfterExportChange={enabled => void appSettings.updateAutoClearAfterExport(enabled)}
-				onContextFilterHistoryLimitChange={limit => void appSettings.updateContextFilterHistoryLimit(limit)}
-				onContextHistoryLimitChange={limit => void appSettings.updateContextHistoryLimit(limit)}
-				onOverlayUndoHistoryLimitChange={limit => void appSettings.updateOverlayUndoHistoryLimit(limit)}
-				onOpenExplorerOnAppStartChange={enabled => void appSettings.updateOpenExplorerOnAppStart(enabled)}
-				onOpenExplorerOnProjectOpenChange={enabled => void appSettings.updateOpenExplorerOnProjectOpen(enabled)}
-				onCloseExplorerOnFolderCloseChange={enabled => void appSettings.updateCloseExplorerOnFolderClose(enabled)}
-				onCloseExplorerOnAppExitChange={enabled => void appSettings.updateCloseExplorerOnAppExit(enabled)}
-			/>
-		</main>
+			<BootLoadingOverlayCleanup ready={appReady} />
+		</>
 	)
 }

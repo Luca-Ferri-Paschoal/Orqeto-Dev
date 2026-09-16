@@ -5,11 +5,13 @@ export type NoticeKind = "info" | "success" | "warning" | "error"
 export interface NoticeProps {
 	kind: NoticeKind
 	message: string
+	details?: readonly string[]
 }
 
 export function Notice({
 	kind,
 	message,
+	details = [],
 }: NoticeProps) {
 	return (
 		<div
@@ -20,7 +22,21 @@ export function Notice({
 				kind,
 			})}
 		>
-			{message}
+			<div className={styles.message}>
+				{message}
+			</div>
+			{details.length > 0 && (
+				<ul className={styles.details}>
+					{details.map((detail, index) => (
+						<li
+							key={`${index}:${detail}`}
+							className={styles.detail}
+						>
+							{detail}
+						</li>
+					))}
+				</ul>
+			)}
 		</div>
 	)
 }

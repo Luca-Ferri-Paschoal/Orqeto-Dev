@@ -1,4 +1,7 @@
-import type { GeneratedFile } from "./types"
+import type {
+	GeneratedFile,
+	WorkMode,
+} from "./types"
 import {
 	type Locale,
 	translate,
@@ -224,7 +227,52 @@ function appendDirectoryContent(
 	}
 }
 
-function getProtocolHeader(locale: Locale): string {
+function getProtocolHeader(
+	locale: Locale,
+	workMode: WorkMode,
+): string {
+	const modeInstructions = workMode === "git" ?
+		[
+			translate(
+				locale,
+				"protocol.workModeGit",
+			),
+			translate(
+				locale,
+				"protocol.gitPatchInstruction",
+			),
+			translate(
+				locale,
+				"protocol.gitPatchSafety",
+			),
+		] :
+		[
+			translate(
+				locale,
+				"protocol.workModeFiles",
+			),
+			translate(
+				locale,
+				"protocol.filesPatchInstruction",
+			),
+			translate(
+				locale,
+				"protocol.deleteManifestDescription",
+			),
+			translate(
+				locale,
+				"protocol.deleteManifestFormat",
+			),
+			translate(
+				locale,
+				"protocol.deleteManifestPaths",
+			),
+			translate(
+				locale,
+				"protocol.deleteManifestOptional",
+			),
+		]
+
 	return [
 		translate(
 			locale,
@@ -234,6 +282,7 @@ function getProtocolHeader(locale: Locale): string {
 			locale,
 			"protocol.label",
 		),
+		...modeInstructions,
 		translate(
 			locale,
 			"protocol.rootDescription",
@@ -258,22 +307,6 @@ function getProtocolHeader(locale: Locale): string {
 			locale,
 			"protocol.pathOnlyDescription",
 		),
-		translate(
-			locale,
-			"protocol.deleteManifestDescription",
-		),
-		translate(
-			locale,
-			"protocol.deleteManifestFormat",
-		),
-		translate(
-			locale,
-			"protocol.deleteManifestPaths",
-		),
-		translate(
-			locale,
-			"protocol.deleteManifestOptional",
-		),
 		`===== ${translate(
 			locale,
 			"protocol.root",
@@ -284,11 +317,15 @@ function getProtocolHeader(locale: Locale): string {
 export function formatGeneratedContent(
 	files: readonly GeneratedFile[],
 	locale: Locale,
+	workMode: WorkMode,
 ): string {
 	if (files.length === 0)
 		return ""
 
-	const blocks = [getProtocolHeader(locale)]
+	const blocks = [getProtocolHeader(
+		locale,
+		workMode,
+	)]
 	const tree = buildDirectoryTree(files)
 
 	appendDirectoryContent(

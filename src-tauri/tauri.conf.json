@@ -1,12 +1,12 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
 	"productName": "Orqeto Dev",
-	"version": "1.0.0",
+	"version": "2.0.0",
 	"identifier": "com.orqeto.dev",
 	"build": {
 		"beforeDevCommand": "npm run dev:web",
-		"devUrl": "http://localhost:1420",
-		"beforeBuildCommand": "npm run build:web",
+		"devUrl": "http://localhost:1430",
+		"beforeBuildCommand": "npm run build:web:bundle",
 		"frontendDist": "../dist"
 	},
 	"app": {
@@ -26,7 +26,9 @@
 		"security": {
 			"capabilities": [
 				"default"
-			]
+			],
+			"csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data:; style-src 'self'; style-src-attr 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+			"devCsp": "default-src 'self'; connect-src ipc: http://ipc.localhost http://localhost:1430 ws://localhost:1430; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 		}
 	},
 	"bundle": {
@@ -50,7 +52,7 @@
 				"displayLanguageSelector": false,
 				"compression": "lzma"
 			},
-			"allowDowngrades": true
+			"allowDowngrades": false
 		},
 		"publisher": "Orqeto",
 		"resources": {

@@ -71,7 +71,7 @@ function parseJsonObject(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} deve conter um objeto JSON.`)
+		)} must contain a JSON object.`)
 	}
 
 	return parsed
@@ -96,7 +96,7 @@ function getStringProperty(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} não possui ${property} como string.`)
+		)} does not contain ${property} as a string.`)
 	}
 
 	return value
@@ -109,7 +109,7 @@ function normalizeRequestedVersion(value: string): string {
 		return `${trimmed}.0`
 
 	if (!SEMVER_PATTERN.test(trimmed))
-		throw new Error(`Versão inválida: "${value}". Use SemVer, por exemplo 0.9.0 ou 1.0.0-beta.1.`)
+		throw new Error(`Invalid version: "${value}". Use SemVer, for example 0.9.0 or 1.0.0-beta.1.`)
 
 	return trimmed
 }
@@ -126,7 +126,7 @@ function replaceCargoPackageVersion(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} não possui a seção [package].`)
+		)} does not contain a [package] section.`)
 	}
 
 	const followingSection = content.indexOf(
@@ -146,7 +146,7 @@ function replaceCargoPackageVersion(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} deve possuir exatamente uma versão em [package].`)
+		)} must contain exactly one version in [package].`)
 	}
 
 	const nextSection = section.replace(
@@ -171,7 +171,7 @@ function getCargoPackageVersion(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} não possui a seção [package].`)
+		)} does not contain a [package] section.`)
 	}
 
 	const followingSection = content.indexOf(
@@ -192,7 +192,7 @@ function getCargoPackageVersion(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} não possui uma versão válida em [package].`)
+		)} does not contain a valid version in [package].`)
 	}
 
 	return version
@@ -224,7 +224,7 @@ function findCargoLockPackageBlock(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} deve possuir exatamente um pacote orqeto-dev.`)
+		)} must contain exactly one orqeto-dev package.`)
 	}
 
 	const match = matches[0]
@@ -233,7 +233,7 @@ function findCargoLockPackageBlock(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} não possui o pacote orqeto-dev.`)
+		)} does not contain the orqeto-dev package.`)
 	}
 
 	return match
@@ -254,7 +254,7 @@ function replaceCargoLockVersion(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} deve possuir exatamente uma versão no pacote orqeto-dev.`)
+		)} must contain exactly one version in the orqeto-dev package.`)
 	}
 
 	const nextBlock = block.replace(
@@ -283,7 +283,7 @@ function getCargoLockVersion(
 		throw new Error(`${path.relative(
 			PROJECT_ROOT,
 			filePath,
-		)} não possui uma versão válida no pacote orqeto-dev.`)
+		)} does not contain a valid version in the orqeto-dev package.`)
 	}
 
 	return version
@@ -377,27 +377,27 @@ async function checkVersions(): Promise<void> {
 	)
 
 	if (!SEMVER_PATTERN.test(canonicalVersion))
-		throw new Error(`package.json possui uma versão SemVer inválida: "${canonicalVersion}".`)
+		throw new Error(`package.json contains an invalid SemVer version: "${canonicalVersion}".`)
 
 	const lockPackages = packageLock["packages"]
 
 	if (!isJsonObject(lockPackages))
-		throw new Error("package-lock.json não possui packages como objeto.")
+		throw new Error("package-lock.json does not contain packages as an object.")
 
 	const lockRootPackage = lockPackages[""]
 
 	if (!isJsonObject(lockRootPackage))
-		throw new Error("package-lock.json não possui o pacote raiz em packages[\"\"].")
+		throw new Error("package-lock.json does not contain the root package at packages[\"\"].")
 
 	const vscodeLockPackages = vscodePackageLock["packages"]
 
 	if (!isJsonObject(vscodeLockPackages))
-		throw new Error("integrations/vscode/package-lock.json não possui packages como objeto.")
+		throw new Error("integrations/vscode/package-lock.json does not contain packages as an object.")
 
 	const vscodeLockRootPackage = vscodeLockPackages[""]
 
 	if (!isJsonObject(vscodeLockRootPackage))
-		throw new Error("integrations/vscode/package-lock.json não possui o pacote raiz em packages[\"\"].")
+		throw new Error("integrations/vscode/package-lock.json does not contain the root package at packages[\"\"].")
 
 	const versions = new Map<string, string>([
 		["package.json", canonicalVersion],
@@ -471,10 +471,10 @@ async function checkVersions(): Promise<void> {
 			.map(([fileName, version]) => `- ${fileName}: ${version}`)
 			.join("\n")
 
-		throw new Error(`Versões fora de sincronia. Fonte de verdade package.json: ${canonicalVersion}\n${details}\nExecute: npm run version:set`)
+		throw new Error(`Versions are out of sync. Source of truth package.json: ${canonicalVersion}\n${details}\nRun: npm run version:set`)
 	}
 
-	console.log(`[Version] ${canonicalVersion} está sincronizada em todos os metadados do app e da extensão.`)
+	console.log(`[Version] ${canonicalVersion} is synchronized across all app and extension metadata.`)
 }
 
 async function setVersion(requestedVersion: string | undefined): Promise<void> {
@@ -510,22 +510,22 @@ async function setVersion(requestedVersion: string | undefined): Promise<void> {
 	const lockPackages = packageLock["packages"]
 
 	if (!isJsonObject(lockPackages))
-		throw new Error("package-lock.json não possui packages como objeto.")
+		throw new Error("package-lock.json does not contain packages as an object.")
 
 	const lockRootPackage = lockPackages[""]
 
 	if (!isJsonObject(lockRootPackage))
-		throw new Error("package-lock.json não possui o pacote raiz em packages[\"\"].")
+		throw new Error("package-lock.json does not contain the root package at packages[\"\"].")
 
 	const vscodeLockPackages = vscodePackageLock["packages"]
 
 	if (!isJsonObject(vscodeLockPackages))
-		throw new Error("integrations/vscode/package-lock.json não possui packages como objeto.")
+		throw new Error("integrations/vscode/package-lock.json does not contain packages as an object.")
 
 	const vscodeLockRootPackage = vscodeLockPackages[""]
 
 	if (!isJsonObject(vscodeLockRootPackage))
-		throw new Error("integrations/vscode/package-lock.json não possui o pacote raiz em packages[\"\"].")
+		throw new Error("integrations/vscode/package-lock.json does not contain the root package at packages[\"\"].")
 
 	packageJson["version"] = version
 	packageLock["version"] = version
@@ -610,10 +610,10 @@ async function setVersion(requestedVersion: string | undefined): Promise<void> {
 		throw error
 	}
 
-	console.log(`[Version] App e extensão atualizados para ${version}.`)
+	console.log(`[Version] App and extension updated to ${version}.`)
 
 	if (requestedVersion !== undefined && requestedVersion.trim() !== version)
-		console.log(`[Version] "${requestedVersion.trim()}" foi normalizada para "${version}".`)
+		console.log(`[Version] "${requestedVersion.trim()}" was normalized to "${version}".`)
 
 	await checkVersions()
 }
@@ -625,14 +625,14 @@ async function main(): Promise<void> {
 
 	if (checkOnly) {
 		if (positionalArgs.length > 0)
-			throw new Error("--check não aceita uma versão. Use npm run version:check.")
+			throw new Error("--check does not accept a version. Use npm run version:check.")
 
 		await checkVersions()
 		return
 	}
 
 	if (positionalArgs.length > 1)
-		throw new Error("Use no máximo uma versão: npm run version:set -- 0.9.0")
+		throw new Error("Provide at most one version: npm run version:set -- 0.9.0")
 
 	await setVersion(positionalArgs[0])
 }

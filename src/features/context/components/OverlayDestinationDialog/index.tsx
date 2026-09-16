@@ -9,6 +9,7 @@ import {
 	translateCount,
 } from "@/infra/i18n"
 import { Button } from "@/shared/components/Button"
+import { Dialog } from "@/shared/components/Dialog"
 import {
 	FolderTree,
 	GitCompareArrows,
@@ -82,108 +83,104 @@ export function OverlayDestinationDialog({
 	)
 
 	return (
-		<div
-			className={styles.backdrop}
-			role="presentation"
+		<Dialog
+			backdropClassName={styles.backdrop}
+			dialogClassName={styles.dialog}
+			labelledBy="overlay-destination-title"
+			disabled={disabled}
+			onCancel={onCancel}
 		>
-			<section
-				className={styles.dialog}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="overlay-destination-title"
-			>
-				<div className={styles.heading}>
-					<div className={styles.headingIcon}>
-						<GitCompareArrows
-							size={16}
+			<div className={styles.heading}>
+				<div className={styles.headingIcon}>
+					<GitCompareArrows
+						size={16}
+						strokeWidth={2}
+						aria-hidden="true"
+					/>
+				</div>
+
+				<div>
+					<h2
+						id="overlay-destination-title"
+						className={styles.title}
+					>
+						{translate(
+							locale,
+							"overlay.title",
+						)}
+					</h2>
+
+					<p className={styles.description}>
+						{progress}
+					</p>
+
+					<p className={styles.description}>
+						{description}
+					</p>
+				</div>
+			</div>
+
+			<div className={styles.candidates}>
+				{pendingOverlay.candidates.map((
+					candidate,
+					index,
+				) => (
+					<button
+						key={`${candidate.destinationRelativePath}:${candidate.sourcePrefix}`}
+						type="button"
+						className={styles.candidate({
+							selected: index === selectedIndex,
+						})}
+						disabled={disabled}
+						onClick={() => setSelectedIndex(index)}
+					>
+						<FolderTree
+							size={14}
 							strokeWidth={2}
 							aria-hidden="true"
 						/>
-					</div>
 
-					<div>
-						<h2
-							id="overlay-destination-title"
-							className={styles.title}
-						>
-							{translate(
-								locale,
-								"overlay.title",
-							)}
-						</h2>
+						<span className={styles.candidateContent}>
+							<strong className={styles.candidatePath}>
+								{candidate.destinationRelativePath}
+							</strong>
 
-						<p className={styles.description}>
-							{progress}
-						</p>
-
-						<p className={styles.description}>
-							{description}
-						</p>
-					</div>
-				</div>
-
-				<div className={styles.candidates}>
-					{pendingOverlay.candidates.map((
-						candidate,
-						index,
-					) => (
-						<button
-							key={`${candidate.destinationRelativePath}:${candidate.sourcePrefix}`}
-							type="button"
-							className={styles.candidate({
-								selected: index === selectedIndex,
-							})}
-							disabled={disabled}
-							onClick={() => setSelectedIndex(index)}
-						>
-							<FolderTree
-								size={14}
-								strokeWidth={2}
-								aria-hidden="true"
-							/>
-
-							<span className={styles.candidateContent}>
-								<strong className={styles.candidatePath}>
-									{candidate.destinationRelativePath}
-								</strong>
-
-								<span className={styles.candidateDetails}>
-									{getCandidateDetails(
-										candidate,
-										locale,
-									)}
-								</span>
+							<span className={styles.candidateDetails}>
+								{getCandidateDetails(
+									candidate,
+									locale,
+								)}
 							</span>
-						</button>
-					))}
-				</div>
+						</span>
+					</button>
+				))}
+			</div>
 
-				<div className={styles.actions}>
-					<Button
-						variant="ghost"
-						disabled={disabled}
-						onClick={onCancel}
-					>
-						{translate(
-							locale,
-							"overlay.skip",
-						)}
-					</Button>
+			<div className={styles.actions}>
+				<Button
+					variant="ghost"
+					disabled={disabled}
+					onClick={onCancel}
+				>
+					{translate(
+						locale,
+						"overlay.skip",
+					)}
+				</Button>
 
-					<Button
-						disabled={disabled || selectedCandidate === null}
-						onClick={() => {
-							if (selectedCandidate !== null)
-								onConfirm(selectedCandidate)
-						}}
-					>
-						{translate(
-							locale,
-							"overlay.applyHere",
-						)}
-					</Button>
-				</div>
-			</section>
-		</div>
+				<Button
+					disabled={disabled || selectedCandidate === null}
+					onClick={() => {
+						if (selectedCandidate !== null)
+							onConfirm(selectedCandidate)
+					}}
+				>
+					{translate(
+						locale,
+						"overlay.applyHere",
+					)}
+				</Button>
+			</div>
+		</Dialog>
 	)
 }

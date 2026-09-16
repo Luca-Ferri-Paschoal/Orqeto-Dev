@@ -1,13 +1,17 @@
-import type { OverlayUndoHistoryEntry } from "../../types"
+import type {
+	OverlayUndoHistoryEntry,
+	WorkMode,
+} from "../../types"
 import { styles } from "./style"
 import {
 	type Locale,
 	translate,
 } from "@/infra/i18n"
 import { Button } from "@/shared/components/Button"
+import { CollapseToggle } from "@/shared/components/CollapseToggle"
+import { CollapsibleRegion } from "@/shared/components/CollapsibleRegion"
 import {
-	ChevronDown,
-	ChevronUp,
+	FileDiff,
 	FolderInput,
 	Undo2,
 } from "lucide-react"
@@ -21,22 +25,65 @@ import {
 
 interface ApplyDropZoneProps {
 	enabled: boolean
+	undoEnabled: boolean
 	isDragging: boolean
 	isApplying: boolean
 	undoHistory: OverlayUndoHistoryEntry[]
 	locale: Locale
+	workMode: WorkMode
 	detailsExpanded: boolean
 	elementRef?: Ref<HTMLElement>
 	onDetailsExpandedChange: (expanded: boolean) => void
 	onUndo: (steps: number) => void
 }
 
+function getUndoHistoryLabel(
+	entry: OverlayUndoHistoryEntry,
+	locale: Locale,
+	historyTimeFormatter: Intl.DateTimeFormat,
+): string {
+	if (entry.sourceKind === "git") {
+		return translate(
+			locale,
+			entry.steps === 1 ?
+				"apply.undo.historyGitLatest" :
+				"apply.undo.historyGitPrevious",
+			{
+				steps: entry.steps,
+				patch: entry.sourceLabel ?? ".patch",
+				added: entry.addedFiles,
+				replaced: entry.replacedFiles,
+				deleted: entry.deletedFiles,
+				addedLines: entry.addedLines ?? 0,
+				deletedLines: entry.deletedLines ?? 0,
+				time: historyTimeFormatter.format(entry.appliedAtUnixMs),
+			},
+		)
+	}
+
+	return translate(
+		locale,
+		entry.steps === 1 ?
+			"apply.undo.historyLatest" :
+			"apply.undo.historyPrevious",
+		{
+			steps: entry.steps,
+			added: entry.addedFiles,
+			replaced: entry.replacedFiles,
+			deleted: entry.deletedFiles,
+			time: historyTimeFormatter.format(entry.appliedAtUnixMs),
+		},
+	)
+}
+
 export function ApplyDropZone({
 	enabled,
+	undoEnabled,
 	isDragging,
 	isApplying,
 	undoHistory,
 	locale,
+	workMode,
 	detailsExpanded,
 	elementRef,
 	onDetailsExpandedChange,
@@ -74,6 +121,25 @@ export function ApplyDropZone({
 			undoHistory.length,
 		) :
 		1
+	const isGitMode = workMode === "git"
+	const modeLabel = translate(
+		locale,
+		isGitMode ?
+			"apply.mode.git" :
+			"apply.mode.files",
+	)
+	const sectionDescription = translate(
+		locale,
+		isGitMode ?
+			"apply.section.description.git" :
+			"apply.section.description.files",
+	)
+	const dropLabel = translate(
+		locale,
+		isGitMode ?
+			"apply.drop.gitCompact" :
+			"apply.drop.compact",
+	)
 
 	function handleUndoSelection(event: ChangeEvent<HTMLSelectElement>): void {
 		const steps = Number(event.target.value)
@@ -84,70 +150,61 @@ export function ApplyDropZone({
 
 	return (
 		<section className={styles.container}>
-			<button
-				type="button"
-				aria-controls={detailsId}
-				aria-expanded={detailsExpanded}
-				aria-label={toggleLabel}
-				title={toggleLabel}
+			<CollapseToggle
+				controlsId={detailsId}
+				expanded={detailsExpanded}
+				label={toggleLabel}
 				className={styles.toggleButton}
-				onClick={() => onDetailsExpandedChange(!detailsExpanded)}
-			>
-				{detailsExpanded ?
-					(
-						<ChevronUp
-							size={15}
-							strokeWidth={2}
-							aria-hidden="true"
-						/>
-					) :
-					(
-						<ChevronDown
-							size={15}
-							strokeWidth={2}
-							aria-hidden="true"
-						/>
-					)}
-			</button>
+				onToggle={() => onDetailsExpandedChange(!detailsExpanded)}
+			/>
 
-			<div
+			<CollapsibleRegion
 				id={detailsId}
-				aria-hidden={!detailsExpanded}
-				inert={!detailsExpanded}
-				className={styles.collapseRegion({
-					expanded: detailsExpanded,
-				})}
+				expanded={detailsExpanded}
+				innerClassName={styles.collapseInner}
 			>
-				<div className={styles.collapseInner}>
-					<header className={styles.header}>
-						<div className={styles.headerIcon}>
-							<FolderInput
-								size={15}
-								strokeWidth={2}
-								aria-hidden="true"
-							/>
-						</div>
+				<header className={styles.header}>
+					<div className={styles.headerIcon}>
+						{isGitMode ?
+							(
+								<FileDiff
+									size={15}
+									strokeWidth={2}
+									aria-hidden="true"
+								/>
+							) :
+							(
+								<FolderInput
+									size={15}
+									strokeWidth={2}
+									aria-hidden="true"
+								/>
+							)}
+					</div>
 
-						<div>
+					<div className={styles.headerContent}>
+						<div className={styles.titleRow}>
 							<h2 className={styles.sectionTitle}>
 								{sectionName}
 							</h2>
-							<p className={styles.sectionDescription}>
-								{translate(
-									locale,
-									"apply.section.description",
-								)}
-							</p>
+							<span className={styles.modeBadge}>
+								{modeLabel}
+							</span>
 						</div>
-					</header>
-				</div>
-			</div>
+						<p className={styles.sectionDescription}>
+							{sectionDescription}
+						</p>
+					</div>
+				</header>
+			</CollapsibleRegion>
 
 			<section
 				ref={elementRef}
 				aria-label={translate(
 					locale,
-					"apply.drop.aria",
+					isGitMode ?
+						"apply.drop.aria.git" :
+						"apply.drop.aria.files",
 				)}
 				className={styles.zone({
 					enabled,
@@ -157,92 +214,85 @@ export function ApplyDropZone({
 				<div className={styles.icon}>
 					{isApplying ?
 						"…" :
-						(
-							<FolderInput
-								size={15}
-								strokeWidth={2}
-								aria-hidden="true"
-							/>
-						)}
+						isGitMode ?
+							(
+								<FileDiff
+									size={15}
+									strokeWidth={2}
+									aria-hidden="true"
+								/>
+							) :
+							(
+								<FolderInput
+									size={15}
+									strokeWidth={2}
+									aria-hidden="true"
+								/>
+							)}
 				</div>
 
 				<h3 className={styles.title}>
-					{translate(
-						locale,
-						"apply.drop.compact",
-					)}
+					{dropLabel}
 				</h3>
 			</section>
 
-			<div
-				aria-hidden={!detailsExpanded}
-				inert={!detailsExpanded}
-				className={styles.collapseRegion({
-					expanded: detailsExpanded,
-				})}
+			<CollapsibleRegion
+				id={`${detailsId}-undo`}
+				expanded={detailsExpanded}
+				innerClassName={styles.undoCollapseInner}
 			>
-				<div className={styles.undoCollapseInner}>
-					<div className={styles.undoControls}>
-						<select
-							aria-label={translate(
-								locale,
-								"apply.undo.historyAria",
-							)}
-							className={styles.undoHistory}
-							disabled={!canUndo || isApplying || !enabled}
-							value={effectiveUndoSteps}
-							onChange={handleUndoSelection}
-						>
-							{undoHistory.length === 0 ?
-								(
-									<option value={1}>
-										{translate(
-											locale,
-											"apply.undo.empty",
-										)}
-									</option>
-								) :
-								undoHistory.map(entry => (
-									<option
-										key={entry.steps}
-										value={entry.steps}
-									>
-										{translate(
-											locale,
-											entry.steps === 1 ?
-												"apply.undo.historyLatest" :
-												"apply.undo.historyPrevious",
-											{
-												steps: entry.steps,
-												added: entry.addedFiles,
-												replaced: entry.replacedFiles,
-												deleted: entry.deletedFiles,
-												time: historyTimeFormatter.format(entry.appliedAtUnixMs),
-											},
-										)}
-									</option>
-								))}
-						</select>
+				<div className={styles.undoControls}>
+					<select
+						aria-label={translate(
+							locale,
+							"apply.undo.historyAria",
+						)}
+						className={styles.undoHistory}
+						disabled={!canUndo || isApplying || !undoEnabled}
+						value={effectiveUndoSteps}
+						onChange={handleUndoSelection}
+					>
+						{undoHistory.length === 0 ?
+							(
+								<option value={1}>
+									{translate(
+										locale,
+										"apply.undo.empty",
+									)}
+								</option>
+							) :
+							undoHistory.map(entry => (
+								<option
+									key={entry.steps}
+									value={entry.steps}
+								>
+									{getUndoHistoryLabel(
+										entry,
+										locale,
+										historyTimeFormatter,
+									)}
+								</option>
+							))}
+					</select>
 
-						<Button
-							variant="secondary"
-							className={styles.undoButton}
-							disabled={!canUndo || isApplying || !enabled}
-							onClick={() => onUndo(effectiveUndoSteps)}
-						>
-							<Undo2
-								size={12}
-								strokeWidth={2}
-								aria-hidden="true"
-							/>
-							{translate(
-								locale,
-								"apply.undo",
-							)}
-						</Button>
-					</div>
+					<Button
+						variant="secondary"
+						className={styles.undoButton}
+						disabled={!canUndo || isApplying || !undoEnabled}
+						onClick={() => onUndo(effectiveUndoSteps)}
+					>
+						<Undo2
+							size={12}
+							strokeWidth={2}
+							aria-hidden="true"
+						/>
+						{translate(
+							locale,
+							"apply.undo",
+						)}
+					</Button>
 				</div>
-			</div>
+			</CollapsibleRegion>
 		</section>
 	)
 }

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstddef>
 #include <cwctype>
 #include <filesystem>
 #include <fstream>
@@ -23,6 +24,9 @@
 namespace {
 constexpr std::uint64_t kMaxVirtualDropBytes = 1024ULL * 1024ULL * 1024ULL;
 constexpr std::size_t kMaxVirtualDropEntries = 100000;
+constexpr std::size_t kMaxPhysicalDropEntries = 50000;
+constexpr std::size_t kMaxPhysicalDropCharacters = 16 * 1024 * 1024;
+constexpr std::size_t kMaxDropPathCharacters = 32767;
 constexpr std::uint32_t kEventEnter = 0;
 constexpr std::uint32_t kEventOver = 1;
 constexpr std::uint32_t kEventLeave = 2;
@@ -39,7 +43,6 @@ using DropCallback = void(__cdecl *)(
 
 DropCallback g_callback = nullptr;
 HWND g_parent = nullptr;
-std::atomic<std::uint64_t> g_drop_counter{0};
 
 struct Registration {
 	HWND hwnd;
@@ -164,46 +167,170 @@ std::vector<SelectedInternalItem> SelectedInternalItems(IDataObject* data_object
 	return result;
 }
 
-std::filesystem::path ProcessDropBaseDirectory() {
-	wchar_t temp_path[MAX_PATH + 1]{};
-	const DWORD length = GetTempPathW(MAX_PATH, temp_path);
-	if (length == 0 || length > MAX_PATH)
+bool IsSafeDirectory(const std::filesystem::path& path) {
+	const DWORD attributes = GetFileAttributesW(path.c_str());
+	return attributes != INVALID_FILE_ATTRIBUTES &&
+		(attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+		(attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+}
+
+bool EnsureDirectoryNoReparse(
+	const std::filesystem::path& path,
+	bool allow_existing
+) {
+	const DWORD attributes = GetFileAttributesW(path.c_str());
+	if (attributes != INVALID_FILE_ATTRIBUTES)
+		return allow_existing &&
+			(attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+			(attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+
+	if (CreateDirectoryW(path.c_str(), nullptr) != 0)
+		return IsSafeDirectory(path);
+
+	if (
+		allow_existing &&
+		GetLastError() == ERROR_ALREADY_EXISTS
+	)
+		return IsSafeDirectory(path);
+
+	return false;
+}
+
+std::wstring NewGuidToken() {
+	GUID guid{};
+	if (FAILED(CoCreateGuid(&guid)))
 		return {};
 
-	return std::filesystem::path(temp_path) /
-		L"orqeto-dev" /
-		L"native-drop" /
-		std::to_wstring(GetCurrentProcessId());
+	wchar_t buffer[64]{};
+	const int written = StringFromGUID2(
+		guid,
+		buffer,
+		static_cast<int>(std::size(buffer))
+	);
+	if (written <= 0)
+		return {};
+
+	std::wstring token(buffer);
+	token.erase(
+		std::remove_if(
+			token.begin(),
+			token.end(),
+			[](wchar_t character) {
+				return character == L'{' ||
+					character == L'}' ||
+					character == L'-';
+			}
+		),
+		token.end()
+	);
+	return token;
+}
+
+std::filesystem::path CreateFreshChildDirectory(
+	const std::filesystem::path& parent,
+	const wchar_t* prefix
+) {
+	for (std::size_t attempt = 0; attempt < 128; ++attempt) {
+		const auto token = NewGuidToken();
+		if (token.empty())
+			return {};
+
+		const auto candidate = parent /
+			(std::wstring(prefix) + L"-" + token);
+		if (CreateDirectoryW(candidate.c_str(), nullptr) != 0) {
+			if (IsSafeDirectory(candidate))
+				return candidate;
+
+			std::error_code error;
+			std::filesystem::remove_all(candidate, error);
+			return {};
+		}
+
+		if (GetLastError() != ERROR_ALREADY_EXISTS)
+			return {};
+	}
+
+	return {};
+}
+
+bool EnsureRelativeDirectoryTree(
+	const std::filesystem::path& base,
+	const std::filesystem::path& relative
+) {
+	if (!IsSafeDirectory(base) || relative.is_absolute())
+		return false;
+
+	auto current = base;
+	for (const auto& component : relative) {
+		const auto value = component.native();
+		if (
+			value == L"." ||
+			value == L".." ||
+			value.empty()
+		)
+			return false;
+
+		current /= component;
+		if (!EnsureDirectoryNoReparse(current, true))
+			return false;
+	}
+
+	return true;
+}
+
+std::filesystem::path ProcessDropBaseDirectory() {
+	static const std::filesystem::path process_directory = []() {
+		wchar_t temp_path[MAX_PATH + 1]{};
+		const DWORD length = GetTempPathW(MAX_PATH, temp_path);
+		if (length == 0 || length > MAX_PATH)
+			return std::filesystem::path{};
+
+		const auto temp_directory = std::filesystem::path(temp_path);
+		const auto app_directory = temp_directory / L"orqeto-dev";
+		const auto native_drop_directory = app_directory / L"native-drop";
+		if (
+			!EnsureDirectoryNoReparse(app_directory, true) ||
+			!EnsureDirectoryNoReparse(native_drop_directory, true)
+		)
+			return std::filesystem::path{};
+
+		return CreateFreshChildDirectory(
+			native_drop_directory,
+			(L"process-" + std::to_wstring(GetCurrentProcessId())).c_str()
+		);
+	}();
+
+	return process_directory;
 }
 
 std::filesystem::path CreateDropDirectory() {
 	const auto process_directory = ProcessDropBaseDirectory();
-	if (process_directory.empty())
+	if (process_directory.empty() || !IsSafeDirectory(process_directory))
 		return {};
 
-	std::error_code error;
-	std::filesystem::create_directories(process_directory, error);
-	if (error)
-		return {};
-
-	const auto identifier = std::to_wstring(GetTickCount64()) +
-		L"-" +
-		std::to_wstring(g_drop_counter.fetch_add(1));
-	const auto directory = process_directory / identifier;
-	std::filesystem::create_directories(directory, error);
-	if (error)
-		return {};
-
-	return directory;
+	return CreateFreshChildDirectory(
+		process_directory,
+		L"drop"
+	);
 }
 
-void CleanupProcessDropDirectory() {
-	const auto process_directory = ProcessDropBaseDirectory();
-	if (process_directory.empty())
-		return;
 
-	std::error_code error;
-	std::filesystem::remove_all(process_directory, error);
+bool DescriptorFileName(
+	const FILEDESCRIPTORW& descriptor,
+	std::wstring* output
+) {
+	std::size_t length = 0;
+	while (
+		length < std::size(descriptor.cFileName) &&
+		descriptor.cFileName[length] != L'\0'
+	)
+		++length;
+
+	if (length == 0 || length == std::size(descriptor.cFileName))
+		return false;
+
+	output->assign(descriptor.cFileName, length);
+	return true;
 }
 
 std::vector<std::filesystem::path> GetDescriptorPaths(
@@ -239,8 +366,20 @@ std::vector<std::filesystem::path> GetDescriptorPaths(
 		return paths;
 	}
 
+	const SIZE_T global_size = GlobalSize(medium.hGlobal);
+	const SIZE_T header_size = offsetof(FILEGROUPDESCRIPTORW, fgd);
+	if (global_size < header_size) {
+		GlobalUnlock(medium.hGlobal);
+		ReleaseStgMedium(&medium);
+		return paths;
+	}
+
 	const UINT count = group->cItems;
-	if (count > kMaxVirtualDropEntries) {
+	if (
+		count > kMaxVirtualDropEntries ||
+		static_cast<SIZE_T>(count) >
+			(global_size - header_size) / sizeof(FILEDESCRIPTORW)
+	) {
 		GlobalUnlock(medium.hGlobal);
 		ReleaseStgMedium(&medium);
 		return paths;
@@ -251,9 +390,13 @@ std::vector<std::filesystem::path> GetDescriptorPaths(
 
 	for (UINT index = 0; index < count; ++index) {
 		const FILEDESCRIPTORW descriptor = group->fgd[index];
+		std::wstring file_name;
 		std::filesystem::path relative_path;
 
-		if (!SafeRelativePath(descriptor.cFileName, &relative_path)) {
+		if (
+			!DescriptorFileName(descriptor, &file_name) ||
+			!SafeRelativePath(file_name, &relative_path)
+		) {
 			paths.clear();
 			descriptors->clear();
 			break;
@@ -488,20 +631,21 @@ bool MaterializeVirtualDrop(
 		const auto destination = drop_directory / restored_paths[index];
 
 		if ((descriptor.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
-			std::filesystem::create_directories(destination, filesystem_error);
-			if (filesystem_error) {
+			if (!EnsureRelativeDirectoryTree(
+				drop_directory,
+				restored_paths[index]
+			)) {
 				std::filesystem::remove_all(drop_directory, filesystem_error);
 				return false;
 			}
 			continue;
 		}
 
-		std::filesystem::create_directories(
-			destination.parent_path(),
-			filesystem_error
-		);
 		if (
-			filesystem_error ||
+			!EnsureRelativeDirectoryTree(
+				drop_directory,
+				restored_paths[index].parent_path()
+			) ||
 			!WriteVirtualFile(
 				data_object,
 				static_cast<LONG>(index),
@@ -563,14 +707,40 @@ bool GetPhysicalDropPaths(
 
 	if (FAILED(data_object->GetData(&format, &medium)))
 		return false;
+	if (medium.tymed != TYMED_HGLOBAL || medium.hGlobal == nullptr) {
+		ReleaseStgMedium(&medium);
+		return false;
+	}
 
 	const HDROP drop = reinterpret_cast<HDROP>(medium.hGlobal);
 	const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+	if (count == 0 || count > kMaxPhysicalDropEntries) {
+		ReleaseStgMedium(&medium);
+		return false;
+	}
 
+	std::size_t total_characters = 0;
+	output_paths->reserve(count);
 	for (UINT index = 0; index < count; ++index) {
 		const UINT length = DragQueryFileW(drop, index, nullptr, 0);
+		if (length == 0 || length > kMaxDropPathCharacters) {
+			output_paths->clear();
+			ReleaseStgMedium(&medium);
+			return false;
+		}
+		total_characters += length;
+		if (total_characters > kMaxPhysicalDropCharacters) {
+			output_paths->clear();
+			ReleaseStgMedium(&medium);
+			return false;
+		}
+
 		std::wstring path(length + 1, L'\0');
-		DragQueryFileW(drop, index, path.data(), length + 1);
+		if (DragQueryFileW(drop, index, path.data(), length + 1) != length) {
+			output_paths->clear();
+			ReleaseStgMedium(&medium);
+			return false;
+		}
 		path.resize(length);
 		output_paths->push_back(std::move(path));
 	}
@@ -824,7 +994,6 @@ extern "C" __declspec(dllexport) bool orqeto_native_drop_install(
 
 	g_parent = parent;
 	g_callback = callback;
-	CleanupProcessDropDirectory();
 	return RefreshTargets();
 }
 

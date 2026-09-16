@@ -4,6 +4,10 @@ interface DrawerStyleParams {
 	open: boolean
 }
 
+interface WorkModeButtonStyleParams {
+	selected: boolean
+}
+
 export const styles = {
 	overlay: ({
 		open,
@@ -85,27 +89,99 @@ export const styles = {
 	),
 
 	content: cn(
+		"orqeto-scroll-area",
 		"flex",
+		"min-h-0",
+		"flex-1",
 		"flex-col",
 		"gap-3",
 		"overflow-y-auto",
+		"overscroll-contain",
 		"p-3.5",
+		"[&>section]:shrink-0",
 	),
 
-	section: cn(
-		"rounded-lg",
+	workModeField: cn(
+		"flex",
+		"flex-col",
+		"gap-1.5",
+	),
+
+	workModeControl: cn(
+		"grid",
+		"grid-cols-2",
+		"gap-1",
+		"rounded-md",
 		"border",
 		"border-[var(--border-color)]",
-		"p-2.5",
+		"bg-[var(--background-3)]",
+		"p-1",
 	),
 
-	sectionTitle: cn(
-		"mb-2.5",
+	workModeButton: ({ selected }: WorkModeButtonStyleParams) => cn(
+		"min-h-8",
+		"rounded",
+		"px-2.5",
 		"text-[10px]",
-		"font-bold",
-		"uppercase",
-		"tracking-wide",
-		"text-[var(--font-color-muted)]",
+		"font-semibold",
+		"transition",
+		"focus-visible:outline-none",
+		"focus-visible:ring-2",
+		"focus-visible:ring-[var(--focus-ring-color)]",
+		"disabled:cursor-not-allowed",
+		"disabled:opacity-60",
+		selected ?
+			[
+				"bg-[var(--accent-button-color)]",
+				"text-[var(--button-font-color)]",
+				"shadow-sm",
+			] :
+			[
+				"text-[var(--font-color-secondary)]",
+				"hover:bg-[var(--background-2)]",
+			],
+	),
+
+	promptAction: cn(
+		"mt-0.5",
+		"flex",
+		"flex-wrap",
+		"items-center",
+		"gap-2",
+	),
+
+	promptButton: cn(
+		"inline-flex",
+		"min-h-8",
+		"items-center",
+		"justify-center",
+		"rounded-md",
+		"border",
+		"border-[var(--border-color-strong)]",
+		"bg-[var(--background-2)]",
+		"px-2.5",
+		"text-[9px]",
+		"font-semibold",
+		"text-[var(--font-color-secondary)]",
+		"transition",
+		"hover:bg-[var(--background-3)]",
+		"focus-visible:outline-none",
+		"focus-visible:ring-2",
+		"focus-visible:ring-[var(--focus-ring-color)]",
+		"disabled:cursor-not-allowed",
+		"disabled:opacity-60",
+	),
+
+	promptStatusSuccess: cn(
+		"text-[9px]",
+		"leading-3.5",
+		"text-[var(--success-font-color)]",
+	),
+
+	promptStatusError: cn(
+		"text-[9px]",
+		"leading-3.5",
+		"text-[var(--danger-font-color)]",
 	),
 
 	selectField: cn(
@@ -115,7 +191,7 @@ export const styles = {
 	),
 
 	selectLabel: cn(
-		"text-[11px]",
+		"text-[12px]",
 		"font-semibold",
 		"text-[var(--font-color-secondary)]",
 	),
@@ -128,7 +204,7 @@ export const styles = {
 		"border-[var(--border-color-strong)]",
 		"bg-[var(--background-2)]",
 		"px-2.5",
-		"text-[11px]",
+		"text-[10px]",
 		"text-[var(--font-color)]",
 		"outline-none",
 		"focus:border-[var(--focus-border-color)]",
@@ -137,12 +213,6 @@ export const styles = {
 		"disabled:cursor-not-allowed",
 		"disabled:bg-[var(--background-3)]",
 		"disabled:text-[var(--font-color-muted)]",
-	),
-
-	selectDescription: cn(
-		"text-[10px]",
-		"leading-4",
-		"text-[var(--font-color-muted)]",
 	),
 
 	historySettings: cn(
@@ -196,29 +266,34 @@ export const styles = {
 	integrationAction: cn(
 		"flex",
 		"flex-col",
-		"gap-2",
+		"gap-1.5",
 	),
 
-	integrationDescription: cn(
-		"text-[10px]",
-		"leading-4",
-		"text-[var(--font-color-muted)]",
+	integrationRow: cn(
+		"flex",
+		"items-center",
+		"justify-between",
+		"gap-3",
+	),
+
+	integrationLabel: cn(
+		"text-[12px]",
+		"font-semibold",
+		"text-[var(--font-color-secondary)]",
 	),
 
 	integrationButton: cn(
 		"inline-flex",
-		"min-h-8",
-		"w-full",
-		"max-w-28",
+		"min-h-7",
+		"shrink-0",
 		"items-center",
 		"justify-center",
-		"self-center",
 		"rounded-md",
 		"border",
 		"border-[var(--accent-button-color)]",
 		"bg-[var(--accent-button-color)]",
-		"px-3",
-		"text-[11px]",
+		"px-2.5",
+		"text-[9px]",
 		"font-semibold",
 		"text-[var(--button-font-color)]",
 		"transition",

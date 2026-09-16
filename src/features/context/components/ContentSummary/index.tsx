@@ -1,7 +1,7 @@
 import { formatByteSize } from "../../formatGeneratedContent"
 import type {
 	ContextHistoryEntry,
-	GeneratedFile,
+	ContextSelectionFile,
 } from "../../types"
 import { styles } from "./style"
 import {
@@ -19,12 +19,14 @@ import {
 } from "lucide-react"
 import {
 	useId,
+	useMemo,
 	useState,
 } from "react"
 
 export interface ContentSummaryProps {
-	files: readonly GeneratedFile[]
-	contentSize: string
+	files: readonly ContextSelectionFile[]
+	contentSize: string | null
+	liveContent: boolean
 	history: readonly ContextHistoryEntry[]
 	locale: Locale
 	disabled?: boolean
@@ -39,6 +41,7 @@ export interface ContentSummaryProps {
 export function ContentSummary({
 	files,
 	contentSize,
+	liveContent,
 	history,
 	locale,
 	disabled = false,
@@ -52,26 +55,36 @@ export function ContentSummary({
 	const [historyExpanded, setHistoryExpanded] = useState(false)
 	const historyId = useId()
 	const hasContent = files.length > 0
-	const description = hasContent ?
-		translateCount(
-			locale,
-			files.length,
-			"context.summary.one",
-			"context.summary.other",
-			{
-				size: contentSize,
-			},
-		) :
+	const description = !hasContent ?
 		translate(
 			locale,
 			"context.summary.none",
-		)
-	const dateFormatter = new Intl.DateTimeFormat(
-		locale,
-		{
-			dateStyle: "short",
-			timeStyle: "short",
-		},
+		) :
+		liveContent ?
+			translateCount(
+				locale,
+				files.length,
+				"context.summary.live.one",
+				"context.summary.live.other",
+			) :
+			translateCount(
+				locale,
+				files.length,
+				"context.summary.one",
+				"context.summary.other",
+				{
+					size: contentSize ?? "—",
+				},
+			)
+	const dateFormatter = useMemo(
+		() => new Intl.DateTimeFormat(
+			locale,
+			{
+				dateStyle: "short",
+				timeStyle: "short",
+			},
+		),
+		[locale],
 	)
 
 	return (
@@ -155,6 +168,8 @@ export function ContentSummary({
 
 			<div
 				id={historyId}
+				aria-hidden={!historyExpanded}
+				inert={!historyExpanded}
 				className={styles.historyRegion({
 					expanded: historyExpanded,
 				})}

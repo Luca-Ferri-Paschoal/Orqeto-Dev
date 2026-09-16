@@ -14,11 +14,18 @@ interface FilterButtonStyleParams {
 	selected: boolean
 }
 
-interface CollapseRegionStyleParams {
+interface CollapseInnerStyleParams {
 	expanded: boolean
 }
 
 export const styles = {
+	embedded: cn(
+		"mt-3",
+		"flex",
+		"flex-col",
+		"gap-2.5",
+	),
+
 	container: cn(
 		"relative",
 		"flex",
@@ -57,43 +64,27 @@ export const styles = {
 		"motion-reduce:transition-none",
 	),
 
-	collapseRegion: ({
-		expanded,
-	}: CollapseRegionStyleParams) => cn(
+	collapseRegion: cn(
 		"relative",
 		"z-20",
-		"grid",
-		"transition-[grid-template-rows,opacity]",
-		"duration-200",
-		"ease-out",
-		"motion-reduce:transition-none",
-		expanded ?
-			[
-				"grid-rows-[1fr]",
-				"opacity-100",
-			] :
-			[
-				"grid-rows-[0fr]",
-				"opacity-0",
-			],
 	),
 
 	collapseInner: ({
 		expanded,
-	}: CollapseRegionStyleParams) => cn(
+	}: CollapseInnerStyleParams) => cn(
 		"relative",
 		"z-20",
 		"flex",
 		"min-h-0",
 		"flex-col",
-		"gap-2.5",
-		"pb-2.5",
+		"pt-2.5",
 		expanded ?
 			"overflow-visible" :
 			"overflow-hidden",
 	),
 
 	header: cn(
+		"mb-2.5",
 		"flex",
 		"items-start",
 		"gap-2.5",
@@ -215,6 +206,7 @@ export const styles = {
 		"z-30",
 		"mt-1",
 		"max-h-48",
+		"orqeto-scroll-area",
 		"overflow-y-auto",
 		"rounded-lg",
 		"border",

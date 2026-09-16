@@ -5,10 +5,6 @@ interface ApplyDropZoneStyleParams {
 	isDragging: boolean
 }
 
-interface CollapseRegionStyleParams {
-	expanded: boolean
-}
-
 export const styles = {
 	container: cn(
 		"relative",
@@ -48,25 +44,6 @@ export const styles = {
 		"motion-reduce:transition-none",
 	),
 
-	collapseRegion: ({
-		expanded,
-	}: CollapseRegionStyleParams) => cn(
-		"grid",
-		"transition-[grid-template-rows,opacity]",
-		"duration-200",
-		"ease-out",
-		"motion-reduce:transition-none",
-		expanded ?
-			[
-				"grid-rows-[1fr]",
-				"opacity-100",
-			] :
-			[
-				"grid-rows-[0fr]",
-				"opacity-0",
-			],
-	),
-
 	collapseInner: cn(
 		"min-h-0",
 		"overflow-hidden",
@@ -90,6 +67,32 @@ export const styles = {
 		"rounded-lg",
 		"bg-[var(--accent-button-color)]",
 		"text-[var(--button-font-color)]",
+	),
+
+	headerContent: cn(
+		"min-w-0",
+		"flex-1",
+	),
+
+	titleRow: cn(
+		"flex",
+		"flex-wrap",
+		"items-center",
+		"gap-1.5",
+	),
+
+	modeBadge: cn(
+		"rounded-full",
+		"border",
+		"border-[var(--accent-border-color)]",
+		"bg-[var(--accent-background)]",
+		"px-1.5",
+		"py-0.5",
+		"text-[9px]",
+		"font-bold",
+		"uppercase",
+		"tracking-wide",
+		"text-[var(--accent-font-color)]",
 	),
 
 	sectionTitle: cn(

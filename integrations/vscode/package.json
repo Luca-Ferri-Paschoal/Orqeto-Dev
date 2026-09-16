@@ -2,7 +2,7 @@
 	"name": "orqeto-dev-vscode",
 	"displayName": "Orqeto Dev",
 	"description": "Integra o Explorer do VS Code com o Orqeto Dev.",
-	"version": "1.0.0",
+	"version": "2.0.0",
 	"publisher": "orqeto",
 	"engines": {
 		"vscode": "^1.100.0"
@@ -18,50 +18,91 @@
 		"commands": [
 			{
 				"command": "orqetoDev.sendToContext",
-				"title": "Enviar para Orqeto Dev",
-				"enablement": "orqetoDev.isRunning"
+				"title": "Enviar para Orqeto Context",
+				"enablement": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+			},
+			{
+				"command": "orqetoDev.sendToContextAndCopy",
+				"title": "Send and copy Orqeto Context",
+				"enablement": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
 			},
 			{
 				"command": "orqetoDev.removeFromContext",
-				"title": "Remover do contexto Orqeto",
-				"enablement": "orqetoDev.isRunning"
+				"title": "Remove from Orqeto Context",
+				"enablement": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+			},
+			{
+				"command": "orqetoDev.sendToIgnore",
+				"title": "Enviar para Orqeto Dev Ignore",
+				"enablement": "orqetoDev.projectOpen && orqetoDev.ignoreMode"
+			},
+			{
+				"command": "orqetoDev.removeFromIgnore",
+				"title": "Remove from Orqeto Dev Ignore",
+				"enablement": "orqetoDev.projectOpen && orqetoDev.ignoreMode"
 			},
 			{
 				"command": "orqetoDev.openFolder",
-				"title": "Abrir no Orqeto Dev",
-				"enablement": "orqetoDev.isRunning"
+				"title": "Open in Orqeto Dev"
 			}
 		],
 		"menus": {
 			"explorer/context": [
 				{
 					"command": "orqetoDev.sendToContext",
-					"when": "orqetoDev.isRunning && resourceScheme == file",
+					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode && resourceScheme == file",
 					"group": "orqeto@1"
 				},
 				{
+					"command": "orqetoDev.sendToContextAndCopy",
+					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode && resourceScheme == file",
+					"group": "orqeto@2"
+				},
+				{
 					"command": "orqetoDev.removeFromContext",
-					"when": "orqetoDev.isRunning && resourceScheme == file",
+					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode && resourceScheme == file",
+					"group": "orqeto@3"
+				},
+				{
+					"command": "orqetoDev.sendToIgnore",
+					"when": "orqetoDev.projectOpen && orqetoDev.ignoreMode && resourceScheme == file",
+					"group": "orqeto@1"
+				},
+				{
+					"command": "orqetoDev.removeFromIgnore",
+					"when": "orqetoDev.projectOpen && orqetoDev.ignoreMode && resourceScheme == file",
 					"group": "orqeto@2"
 				},
 				{
 					"command": "orqetoDev.openFolder",
-					"when": "orqetoDev.isRunning && resourceScheme == file && explorerResourceIsFolder",
-					"group": "orqeto@3"
+					"when": "resourceScheme == file && explorerResourceIsFolder && (orqetoDev.allowOpenSubfolders || resourcePath in orqetoDev.openProjectRootPaths)",
+					"group": "orqeto@4"
 				}
 			],
 			"commandPalette": [
 				{
 					"command": "orqetoDev.sendToContext",
-					"when": "orqetoDev.isRunning"
+					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+				},
+				{
+					"command": "orqetoDev.sendToContextAndCopy",
+					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
 				},
 				{
 					"command": "orqetoDev.removeFromContext",
-					"when": "orqetoDev.isRunning"
+					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+				},
+				{
+					"command": "orqetoDev.sendToIgnore",
+					"when": "orqetoDev.projectOpen && orqetoDev.ignoreMode"
+				},
+				{
+					"command": "orqetoDev.removeFromIgnore",
+					"when": "orqetoDev.projectOpen && orqetoDev.ignoreMode"
 				},
 				{
 					"command": "orqetoDev.openFolder",
-					"when": "orqetoDev.isRunning"
+					"when": "orqetoDev.allowOpenSubfolders || orqetoDev.workspaceRootExactlyOpen"
 				}
 			]
 		}

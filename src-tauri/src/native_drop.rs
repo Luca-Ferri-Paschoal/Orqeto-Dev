@@ -37,7 +37,7 @@ fn native_drop_base_directory() -> PathBuf {
 pub async fn cleanup_native_drop(path: String) -> Result<(), String> {
 	tauri::async_runtime::spawn_blocking(move || cleanup_native_drop_blocking(&path))
 		.await
-		.map_err(|error| format!("A limpeza do drop temporário foi interrompida: {error}"))?
+		.map_err(|error| format!("Temporary drop cleanup was interrupted: {error}"))?
 }
 
 fn cleanup_native_drop_blocking(path: &str) -> Result<(), String> {
@@ -49,18 +49,19 @@ fn cleanup_native_drop_blocking(path: &str) -> Result<(), String> {
 
 	let canonical_candidate = candidate
 		.canonicalize()
-		.map_err(|error| format!("Não foi possível validar o drop temporário: {error}"))?;
+		.map_err(|error| format!("Could not validate the temporary drop: {error}"))?;
 	let base = native_drop_base_directory();
 	let canonical_base = base
 		.canonicalize()
-		.map_err(|error| format!("Não foi possível validar a pasta temporária do Orqeto Dev: {error}"))?;
+		.map_err(|error| format!("Could not validate the Orqeto Dev temporary folder: {error}"))?;
 
 	if canonical_candidate == canonical_base || !canonical_candidate.starts_with(&canonical_base) {
-		return Err("O caminho solicitado não pertence aos drops temporários do Orqeto Dev.".to_string());
+		return Err("The requested path does not belong to Orqeto Dev temporary drops.".to_string());
 	}
 
-	std::fs::remove_dir_all(&canonical_candidate)
-		.map_err(|error| format!("Não foi possível remover o drop temporário: {error}"))
+	crate::storage::release_native_drop(&canonical_candidate);
+	crate::storage::remove_managed_directory(candidate)
+		.map_err(|error| format!("Could not remove the temporary drop: {error}"))
 }
 
 #[cfg(target_os = "windows")]
@@ -87,6 +88,8 @@ mod windows {
 	const EVENT_OVER: u32 = 1;
 	const EVENT_LEAVE: u32 = 2;
 	const EVENT_DROP: u32 = 3;
+	const MAX_NATIVE_DROP_PATHS: usize = 50_000;
+	const MAX_NATIVE_DROP_WIDE_UNITS: usize = 32_767;
 
 	static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -111,7 +114,7 @@ mod windows {
 		let _ = APP_HANDLE.set(window.app_handle().clone());
 		let hwnd = window
 			.hwnd()
-			.map_err(|error| format!("Não foi possível obter a janela nativa: {error}"))?;
+			.map_err(|error| format!("Could not obtain the native window: {error}"))?;
 		let installed = unsafe {
 			orqeto_native_drop_install(
 				hwnd.0,
@@ -122,20 +125,20 @@ mod windows {
 		if installed {
 			Ok(())
 		} else {
-			Err("O Windows não conseguiu registrar o drop nativo do Orqeto Dev.".to_string())
+			Err("Windows could not register the Orqeto Dev native drop target.".to_string())
 		}
 	}
 
 	pub fn refresh(window: &WebviewWindow) -> Result<(), String> {
 		let hwnd = window
 			.hwnd()
-			.map_err(|error| format!("Não foi possível obter a janela nativa: {error}"))?;
+			.map_err(|error| format!("Could not obtain the native window: {error}"))?;
 		let refreshed = unsafe { orqeto_native_drop_refresh(hwnd.0) };
 
 		if refreshed {
 			Ok(())
 		} else {
-			Err("O Windows não conseguiu atualizar o drop nativo do Orqeto Dev.".to_string())
+			Err("Windows could not update the Orqeto Dev native drop target.".to_string())
 		}
 	}
 
@@ -155,14 +158,20 @@ mod windows {
 			EVENT_ENTER => NativeDropEvent::Enter { position },
 			EVENT_OVER => NativeDropEvent::Over { position },
 			EVENT_LEAVE => NativeDropEvent::Leave,
-			EVENT_DROP => NativeDropEvent::Drop {
-				position,
-				paths: read_paths(
-					paths,
-					path_count,
-				),
-				temporary_root: read_wide_string(temporary_root),
-			},
+			EVENT_DROP => {
+				let temporary_root = read_wide_string(temporary_root);
+				if let Some(root) = temporary_root.as_deref() {
+					let _ = crate::storage::register_native_drop(std::path::Path::new(root));
+				}
+				NativeDropEvent::Drop {
+					position,
+					paths: read_paths(
+						paths,
+						path_count,
+					),
+					temporary_root,
+				}
+			}
 			_ => return,
 		};
 
@@ -176,7 +185,7 @@ mod windows {
 		paths: *const *const u16,
 		path_count: usize,
 	) -> Vec<String> {
-		if paths.is_null() || path_count == 0 {
+		if paths.is_null() || path_count == 0 || path_count > MAX_NATIVE_DROP_PATHS {
 			return Vec::new();
 		}
 
@@ -195,8 +204,12 @@ mod windows {
 		}
 
 		let mut length = 0_usize;
-		while *value.add(length) != 0 {
+		while length < MAX_NATIVE_DROP_WIDE_UNITS && *value.add(length) != 0 {
 			length += 1;
+		}
+
+		if length == MAX_NATIVE_DROP_WIDE_UNITS {
+			return None;
 		}
 
 		Some(

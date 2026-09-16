@@ -122,6 +122,7 @@ export const styles = {
 		"max-h-56",
 		"flex-col",
 		"gap-1",
+		"orqeto-scroll-area",
 		"overflow-y-auto",
 		"rounded-lg",
 		"border",

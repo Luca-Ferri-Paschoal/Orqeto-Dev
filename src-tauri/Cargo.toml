@@ -1,6 +1,6 @@
 [package]
 name = "orqeto-dev"
-version = "1.0.0"
+version = "2.0.0"
 description = "Orqeto AI-assisted development desktop utility"
 authors = ["Orqeto"]
 edition = "2021"
@@ -15,14 +15,18 @@ cc = "1"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+getrandom = "0.3.4"
 ignore = "0.4.33"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10.9"
+sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "runtime-tokio"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tokio = { version = "1", features = ["sync"] }
 zip = "8.6.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]

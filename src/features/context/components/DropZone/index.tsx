@@ -9,10 +9,10 @@ import {
 	translate,
 } from "@/infra/i18n"
 import { Button } from "@/shared/components/Button"
+import { CollapseToggle } from "@/shared/components/CollapseToggle"
+import { CollapsibleRegion } from "@/shared/components/CollapsibleRegion"
 import { Input } from "@/shared/components/Input"
 import {
-	ChevronDown,
-	ChevronUp,
 	FileCode2,
 	X,
 } from "lucide-react"
@@ -36,6 +36,9 @@ export interface DropZoneProps {
 	filterHistory: readonly ContextFilterHistoryEntry[]
 	pathsOnly: boolean
 	detailsExpanded: boolean
+	embedded?: boolean
+	showDropTargets?: boolean
+	showFilters?: boolean
 	addElementRef?: Ref<HTMLElement>
 	removeElementRef?: Ref<HTMLElement>
 	onFilterPatternChange: (value: string) => void
@@ -91,6 +94,9 @@ export function DropZone({
 	filterHistory,
 	pathsOnly,
 	detailsExpanded,
+	embedded = false,
+	showDropTargets = true,
+	showFilters = true,
 	addElementRef,
 	removeElementRef,
 	onFilterPatternChange,
@@ -108,267 +114,213 @@ export function DropZone({
 		locale,
 		"context.create.title",
 	)
+	const filterSectionName = translate(
+		locale,
+		"context.filter.label",
+	)
 	const toggleLabel = translate(
 		locale,
 		detailsExpanded ?
 			"section.collapse" :
 			"section.expand",
 		{
-			section: sectionName,
+			section: filterSectionName,
 		},
 	)
-
-	return (
-		<section className={styles.container}>
-			<button
-				type="button"
-				aria-controls={detailsId}
-				aria-expanded={detailsExpanded}
-				aria-label={toggleLabel}
-				title={toggleLabel}
-				className={styles.toggleButton}
-				onClick={() => onDetailsExpandedChange(!detailsExpanded)}
-			>
-				{detailsExpanded ?
-					(
-						<ChevronUp
-							size={15}
-							strokeWidth={2}
-							aria-hidden="true"
-						/>
-					) :
-					(
-						<ChevronDown
-							size={15}
-							strokeWidth={2}
-							aria-hidden="true"
-						/>
+	const filterPanel = (
+		<div className={styles.filterPanel}>
+			<div className={styles.filterRow}>
+				<span className={styles.filterLabel}>
+					{translate(
+						locale,
+						"context.filter.target.label",
 					)}
-			</button>
-
-			<div
-				id={detailsId}
-				aria-hidden={!detailsExpanded}
-				inert={!detailsExpanded}
-				className={styles.collapseRegion({
-					expanded: detailsExpanded,
-				})}
-			>
-				<div className={styles.collapseInner({ expanded: detailsExpanded })}>
-					<header className={styles.header}>
-						<div className={styles.headerIcon}>
-							<FileCode2
-								size={15}
-								strokeWidth={2}
-								aria-hidden="true"
-							/>
-						</div>
-
-						<div>
-							<h2 className={styles.sectionTitle}>
-								{sectionName}
-							</h2>
-							<p className={styles.sectionDescription}>
-								{translate(
-									locale,
-									"context.create.description",
-								)}
-							</p>
-						</div>
-					</header>
-
-					<div className={styles.filterPanel}>
-						<div className={styles.filterRow}>
-							<span className={styles.filterLabel}>
-								{translate(
-									locale,
-									"context.filter.target.label",
-								)}
-							</span>
-							<div className={styles.filterButtons}>
-								<FilterButton
-									value="fileName"
-									selectedValue={filterTarget}
-									label={translate(
-										locale,
-										"context.filter.target.fileName",
-									)}
-									disabled={isProcessing}
-									onChange={onFilterTargetChange}
-								/>
-								<FilterButton
-									value="path"
-									selectedValue={filterTarget}
-									label={translate(
-										locale,
-										"context.filter.target.path",
-									)}
-									disabled={isProcessing}
-									onChange={onFilterTargetChange}
-								/>
-							</div>
-						</div>
-
-						<div className={styles.filterRow}>
-							<span className={styles.filterLabel}>
-								{translate(
-									locale,
-									"context.filter.mode.label",
-								)}
-							</span>
-							<div className={styles.filterButtons}>
-								<FilterButton
-									value="contains"
-									selectedValue={filterMode}
-									label={translate(
-										locale,
-										"context.filter.mode.contains",
-									)}
-									disabled={isProcessing}
-									onChange={onFilterModeChange}
-								/>
-								<FilterButton
-									value="exact"
-									selectedValue={filterMode}
-									label={translate(
-										locale,
-										"context.filter.mode.exact",
-									)}
-									disabled={isProcessing}
-									onChange={onFilterModeChange}
-								/>
-								<FilterButton
-									value="regex"
-									selectedValue={filterMode}
-									label={translate(
-										locale,
-										"context.filter.mode.regex",
-									)}
-									disabled={isProcessing}
-									onChange={onFilterModeChange}
-								/>
-							</div>
-						</div>
-
-						<div className={styles.filterRow}>
-							<span className={styles.filterLabel}>
-								{translate(
-									locale,
-									"context.pathsOnly.label",
-								)}
-							</span>
-							<button
-								type="button"
-								aria-pressed={pathsOnly}
-								className={styles.filterButton({
-									selected: pathsOnly,
-								})}
-								disabled={isProcessing}
-								onClick={() => onPathsOnlyChange(!pathsOnly)}
-							>
-								{translate(
-									locale,
-									"context.pathsOnly.button",
-								)}
-							</button>
-						</div>
-
-						<div className={styles.filterInputRow}>
-							<div className={styles.filterInputContainer}>
-								<Input
-									id={`${detailsId}-filter`}
-									label={translate(
-										locale,
-										"context.filter.label",
-									)}
-									value={filterPattern}
-									placeholder={translate(
-										locale,
-										"context.filter.placeholder",
-									)}
-									error={filterError ?? undefined}
-									disabled={isProcessing}
-									onFocus={() => setHistoryOpen(true)}
-									onBlur={() => setHistoryOpen(false)}
-									onChange={event => onFilterPatternChange(event.currentTarget.value)}
-								/>
-
-								{historyOpen && filterHistory.length > 0 && (
-									<div className={styles.history}>
-										<div className={styles.historyTitle}>
-											{translate(
-												locale,
-												"context.filter.recent",
-											)}
-										</div>
-
-										{filterHistory.map(entry => (
-											<div
-												key={`${entry.target}:${entry.mode}:${entry.pattern}`}
-												className={styles.historyItem}
-												onMouseDown={(event: { preventDefault: () => void }) => event.preventDefault()}
-											>
-												<button
-													type="button"
-													className={styles.historyValue}
-													onClick={() => {
-														onFilterHistorySelect(entry)
-														setHistoryOpen(false)
-													}}
-												>
-													<span className={styles.historyPattern}>
-														{entry.pattern}
-													</span>
-													<span className={styles.historyMeta}>
-														{translate(
-															locale,
-															entry.target === "fileName" ?
-																"context.filter.target.fileName" :
-																"context.filter.target.path",
-														)} · {translate(
-															locale,
-															`context.filter.mode.${entry.mode}`,
-														)}
-													</span>
-												</button>
-
-												<button
-													type="button"
-													aria-label={translate(
-														locale,
-														"context.filter.deleteRecent",
-													)}
-													className={styles.historyDelete}
-													onClick={() => onFilterHistoryDelete(entry)}
-												>
-													<X
-														size={12}
-														strokeWidth={2}
-														aria-hidden="true"
-													/>
-												</button>
-											</div>
-										))}
-									</div>
-								)}
-							</div>
-
-							<Button
-								variant="secondary"
-								className={styles.clearButton}
-								disabled={isProcessing || filterPattern.length === 0}
-								onClick={onFilterClear}
-							>
-								{translate(
-									locale,
-									"context.filter.clear",
-								)}
-							</Button>
-						</div>
-					</div>
+				</span>
+				<div className={styles.filterButtons}>
+					<FilterButton
+						value="fileName"
+						selectedValue={filterTarget}
+						label={translate(
+							locale,
+							"context.filter.target.fileName",
+						)}
+						disabled={isProcessing}
+						onChange={onFilterTargetChange}
+					/>
+					<FilterButton
+						value="path"
+						selectedValue={filterTarget}
+						label={translate(
+							locale,
+							"context.filter.target.path",
+						)}
+						disabled={isProcessing}
+						onChange={onFilterTargetChange}
+					/>
 				</div>
 			</div>
 
+			<div className={styles.filterRow}>
+				<span className={styles.filterLabel}>
+					{translate(
+						locale,
+						"context.filter.mode.label",
+					)}
+				</span>
+				<div className={styles.filterButtons}>
+					<FilterButton
+						value="contains"
+						selectedValue={filterMode}
+						label={translate(
+							locale,
+							"context.filter.mode.contains",
+						)}
+						disabled={isProcessing}
+						onChange={onFilterModeChange}
+					/>
+					<FilterButton
+						value="exact"
+						selectedValue={filterMode}
+						label={translate(
+							locale,
+							"context.filter.mode.exact",
+						)}
+						disabled={isProcessing}
+						onChange={onFilterModeChange}
+					/>
+					<FilterButton
+						value="regex"
+						selectedValue={filterMode}
+						label={translate(
+							locale,
+							"context.filter.mode.regex",
+						)}
+						disabled={isProcessing}
+						onChange={onFilterModeChange}
+					/>
+				</div>
+			</div>
+
+			<div className={styles.filterRow}>
+				<span className={styles.filterLabel}>
+					{translate(
+						locale,
+						"context.pathsOnly.label",
+					)}
+				</span>
+				<button
+					type="button"
+					aria-pressed={pathsOnly}
+					className={styles.filterButton({
+						selected: pathsOnly,
+					})}
+					disabled={isProcessing}
+					onClick={() => onPathsOnlyChange(!pathsOnly)}
+				>
+					{translate(
+						locale,
+						"context.pathsOnly.button",
+					)}
+				</button>
+			</div>
+
+			<div className={styles.filterInputRow}>
+				<div className={styles.filterInputContainer}>
+					<Input
+						id={`${detailsId}-filter`}
+						label={translate(
+							locale,
+							"context.filter.label",
+						)}
+						value={filterPattern}
+						placeholder={translate(
+							locale,
+							"context.filter.placeholder",
+						)}
+						error={filterError ?? undefined}
+						disabled={isProcessing}
+						onFocus={() => setHistoryOpen(true)}
+						onBlur={() => setHistoryOpen(false)}
+						onChange={event => onFilterPatternChange(event.currentTarget.value)}
+					/>
+
+					{historyOpen && filterHistory.length > 0 && (
+						<div className={styles.history}>
+							<div className={styles.historyTitle}>
+								{translate(
+									locale,
+									"context.filter.recent",
+								)}
+							</div>
+
+							{filterHistory.map(entry => (
+								<div
+									key={`${entry.target}:${entry.mode}:${entry.pattern}`}
+									className={styles.historyItem}
+									onMouseDown={(event: { preventDefault: () => void }) => event.preventDefault()}
+								>
+									<button
+										type="button"
+										className={styles.historyValue}
+										onClick={() => {
+											onFilterHistorySelect(entry)
+											setHistoryOpen(false)
+										}}
+									>
+										<span className={styles.historyPattern}>
+											{entry.pattern}
+										</span>
+										<span className={styles.historyMeta}>
+											{translate(
+												locale,
+												entry.target === "fileName" ?
+													"context.filter.target.fileName" :
+													"context.filter.target.path",
+											)} · {translate(
+												locale,
+												`context.filter.mode.${entry.mode}`,
+											)}
+										</span>
+									</button>
+
+									<button
+										type="button"
+										aria-label={translate(
+											locale,
+											"context.filter.deleteRecent",
+										)}
+										className={styles.historyDelete}
+										onClick={() => onFilterHistoryDelete(entry)}
+									>
+										<X
+											size={12}
+											strokeWidth={2}
+											aria-hidden="true"
+										/>
+									</button>
+								</div>
+							))}
+						</div>
+					)}
+				</div>
+
+				<Button
+					variant="secondary"
+					className={styles.clearButton}
+					disabled={isProcessing || filterPattern.length === 0}
+					onClick={onFilterClear}
+				>
+					{translate(
+						locale,
+						"context.filter.clear",
+					)}
+				</Button>
+			</div>
+		</div>
+	)
+
+	const dropTargets = showDropTargets ?
+		(
 			<div className={styles.zones}>
 				<section
 					ref={addElementRef}
@@ -420,6 +372,71 @@ export function DropZone({
 					</h3>
 				</section>
 			</div>
+		) :
+		null
+
+	if (embedded && !showFilters && !showDropTargets)
+		return null
+
+	if (embedded) {
+		return (
+			<div className={styles.embedded}>
+				{showFilters && filterPanel}
+				{dropTargets}
+			</div>
+		)
+	}
+
+	return (
+		<section className={styles.container}>
+			{showDropTargets && (
+				<>
+					<CollapseToggle
+						controlsId={detailsId}
+						expanded={detailsExpanded}
+						label={toggleLabel}
+						className={styles.toggleButton}
+						onToggle={() => onDetailsExpandedChange(!detailsExpanded)}
+					/>
+
+					<header className={styles.header}>
+						<div className={styles.headerIcon}>
+							<FileCode2
+								size={15}
+								strokeWidth={2}
+								aria-hidden="true"
+							/>
+						</div>
+
+						<div>
+							<h2 className={styles.sectionTitle}>
+								{sectionName}
+							</h2>
+							<p className={styles.sectionDescription}>
+								{translate(
+									locale,
+									"context.create.description",
+								)}
+							</p>
+						</div>
+					</header>
+				</>
+			)}
+
+			{showDropTargets ?
+				(
+					<CollapsibleRegion
+						id={detailsId}
+						expanded={detailsExpanded}
+						className={styles.collapseRegion}
+						innerClassName={styles.collapseInner({ expanded: detailsExpanded })}
+					>
+						{filterPanel}
+					</CollapsibleRegion>
+				) :
+				filterPanel}
+
+			{dropTargets}
 		</section>
 	)
 }

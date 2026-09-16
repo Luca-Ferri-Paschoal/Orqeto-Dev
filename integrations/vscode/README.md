@@ -1,13 +1,36 @@
-# Orqeto Dev para VS Code
+# Orqeto Dev VS Code Extension
 
-Integra o Explorer do VS Code com o aplicativo desktop Orqeto Dev no Windows.
+This extension connects VS Code to the local Orqeto Dev application.
 
-- **Enviar para Orqeto Dev** aceita arquivos, pastas ou multiseleção. O aplicativo identifica qual projeto aberto contém todos os paths, foca a aba correspondente e adiciona o conteúdo somente nela.
-- **Remover do contexto Orqeto** aceita arquivos, pastas ou multiseleção e remove somente as entradas correspondentes do contexto em memória. Nenhum arquivo do projeto é excluído.
-- **Abrir no Orqeto Dev** aceita uma pasta. Se a mesma root já estiver aberta, apenas foca sua aba; caso contrário o aplicativo reutiliza uma aba vazia ou cria uma nova.
+## Context and Dev Ignore per project
 
-Se uma seleção de envio ou remoção não pertencer integralmente a nenhum projeto aberto, nenhuma aba é alterada e o Orqeto Dev mostra o aviso.
+Context actions are shown only when the workspace for this VS Code instance can be matched safely to a project that is **currently open** in Orqeto Dev.
 
-Os comandos só ficam disponíveis enquanto o Orqeto Dev estiver rodando. A extensão consulta o executável registrado pelo aplicativo e atualiza a disponibilidade dos menus automaticamente.
+When the matching Orqeto project is in Create mode, the extension can expose:
 
-Se o Orqeto Dev não estiver rodando, fechar durante a operação ou ocorrer uma falha ao consultar/encaminhar a ação, a extensão não inicia o aplicativo e encerra a ação silenciosamente.
+- **Send to Orqeto Context**;
+- **Send and copy Orqeto Context**;
+- **Remove from Orqeto Context**.
+
+**Send and copy Orqeto Context** adds the entire selection first and only then copies the complete, already-updated context once, using the same behavior as the application's Copy button.
+
+While the **Orqeto Dev Ignore** dialog for that same project is open, only that VS Code instance/project switches to:
+
+- **Add to Orqeto Dev Ignore**;
+- **Remove from Orqeto Dev Ignore**.
+
+State is tracked per project root. Opening the Ignore dialog for project A does not affect project B or another VS Code window. The extension refreshes state before each action, and the application revalidates the current project and mode as well.
+
+If the selection does not belong entirely to a project that is open in Orqeto Dev, no Context/Ignore action is offered, and the application also rejects forwarded actions that do not have a valid owner project.
+
+## Open in Orqeto Dev
+
+**Open in Orqeto Dev** does not require the project to be open already:
+
+- if Orqeto Dev is closed, the extension starts the registered executable;
+- if the exact root is already open, Orqeto Dev focuses the existing tab;
+- if it is not open yet, Orqeto Dev reuses an empty tab or creates a new one.
+
+By default, when a root is already open in Orqeto Dev, its subfolders are not offered as new projects from the VS Code Explorer menu. This preference is global and can be disabled in Orqeto Dev Settings. The application also enforces the rule when receiving the command, protecting against stale menus.
+
+In multi-root workspaces where a single Orqeto project cannot be determined safely, the extension prefers to hide Context/Ignore actions instead of guessing.

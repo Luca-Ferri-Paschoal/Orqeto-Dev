@@ -1,38 +1,84 @@
 import { styles } from "./style"
+import type {
+	ContextMode,
+	FolderAction,
+} from "@/features/context/types"
 import {
 	type Locale,
 	translate,
 } from "@/infra/i18n"
-import { Button } from "@/shared/components/Button"
+import { CollapseToggle } from "@/shared/components/CollapseToggle"
+import { CollapsibleRegion } from "@/shared/components/CollapsibleRegion"
 import { Input } from "@/shared/components/Input"
 import {
 	ChevronDown,
-	ChevronUp,
+	ShieldCheck,
 } from "lucide-react"
-import { useId } from "react"
+import {
+	type ReactNode,
+	useId,
+	useState,
+} from "react"
+
+export type ContextSectionMode = "project" | "commit" | "validation"
 
 export interface FolderSettingsProps {
 	rootFolder: string | null
 	locale: Locale
 	disabled?: boolean
+	isGitRepository: boolean
+	hasTypecheckContext: boolean
+	hasEslintContext: boolean
+	contextMode: ContextMode
+	projectIgnoreExists: boolean | null
+	vscodeAvailable: boolean
 	expanded: boolean
+	selectedAction: FolderAction
+	children?: ReactNode
 	onExpandedChange: (expanded: boolean) => void
+	onSelectedActionChange: (action: FolderAction) => void
+	onContextModeChange: (mode: ContextSectionMode) => void
 	onSelectFolder: () => void
 	onOpenFolder: () => void
+	onOpenVscode: () => void
 	onCloseFolder: () => void
+	onDevIgnore: () => void
+}
+
+function getSectionMode(contextMode: ContextMode): ContextSectionMode {
+	if (contextMode === "commit")
+		return "commit"
+
+	if (contextMode === "typecheck" || contextMode === "eslint")
+		return "validation"
+
+	return "project"
 }
 
 export function FolderSettings({
 	rootFolder,
 	locale,
 	disabled = false,
+	isGitRepository,
+	hasTypecheckContext,
+	hasEslintContext,
+	contextMode,
+	projectIgnoreExists,
+	vscodeAvailable,
 	expanded,
+	selectedAction,
+	children,
 	onExpandedChange,
+	onSelectedActionChange,
+	onContextModeChange,
 	onSelectFolder,
 	onOpenFolder,
+	onOpenVscode,
 	onCloseFolder,
+	onDevIgnore,
 }: FolderSettingsProps) {
 	const detailsId = useId()
+	const [actionMenuOpen, setActionMenuOpen] = useState(false)
 	const sectionName = translate(
 		locale,
 		"folder.title",
@@ -46,6 +92,93 @@ export function FolderSettings({
 			section: sectionName,
 		},
 	)
+	const selectedMode = getSectionMode(contextMode)
+	const contextModes: Array<{
+		mode: ContextSectionMode
+		label: string
+	}> = [
+			{
+				mode: "project",
+				label: translate(
+					locale,
+					"folder.contextMode.project",
+				),
+			},
+			...(isGitRepository ?
+				[{
+					mode: "commit" as const,
+					label: translate(
+						locale,
+						"folder.contextMode.commit",
+					),
+				}] :
+				[]),
+			...(hasTypecheckContext || hasEslintContext ?
+				[{
+					mode: "validation" as const,
+					label: translate(
+						locale,
+						"folder.contextMode.validation",
+					),
+				}] :
+				[]),
+		]
+	const defaultAction = {
+		value: "select" as const,
+		label: translate(
+			locale,
+			rootFolder === null ?
+				"folder.select" :
+				"folder.change",
+		),
+	}
+	const actions: Array<{
+		value: FolderAction
+		label: string
+	}> = [
+			defaultAction,
+			...(rootFolder === null ?
+				[] :
+				[
+					{
+						value: "explorer" as const,
+						label: translate(
+							locale,
+							"folder.openExplorer",
+						),
+					},
+					...(vscodeAvailable ?
+						[{
+							value: "vscode" as const,
+							label: translate(
+								locale,
+								"folder.openVscode",
+							),
+						}] :
+						[]),
+					{
+						value: "close" as const,
+						label: translate(
+							locale,
+							"folder.close",
+						),
+					},
+				]),
+		]
+	const currentAction = actions.find(action => action.value === selectedAction) ?? defaultAction
+
+	function executeAction(action: FolderAction): void {
+		if (action === "select")
+			onSelectFolder()
+		else if (action === "explorer")
+			onOpenFolder()
+		else if (action === "vscode")
+			onOpenVscode()
+		else {
+			onSelectedActionChange("select")
+			onCloseFolder()
+		}
+	}
 
 	return (
 		<section className={styles.container}>
@@ -54,42 +187,47 @@ export function FolderSettings({
 					{sectionName}
 				</h2>
 
-				<button
-					type="button"
-					aria-controls={detailsId}
-					aria-expanded={expanded}
-					aria-label={toggleLabel}
-					title={toggleLabel}
+				<CollapseToggle
+					controlsId={detailsId}
+					expanded={expanded}
+					label={toggleLabel}
 					className={styles.toggleButton}
-					onClick={() => onExpandedChange(!expanded)}
-				>
-					{expanded ?
-						(
-							<ChevronUp
-								size={15}
-								strokeWidth={2}
-								aria-hidden="true"
-							/>
-						) :
-						(
-							<ChevronDown
-								size={15}
-								strokeWidth={2}
-								aria-hidden="true"
-							/>
-						)}
-				</button>
+					onToggle={() => onExpandedChange(!expanded)}
+				/>
 			</header>
 
-			<div
+			{rootFolder !== null && (
+				<div
+					className={styles.contextModeBar}
+					role="group"
+					aria-label={translate(
+						locale,
+						"folder.contextMode.label",
+					)}
+				>
+					{contextModes.map(option => (
+						<button
+							key={option.mode}
+							type="button"
+							aria-pressed={selectedMode === option.mode}
+							className={styles.contextModeButton({
+								selected: selectedMode === option.mode,
+							})}
+							disabled={disabled}
+							onClick={() => onContextModeChange(option.mode)}
+						>
+							{option.label}
+						</button>
+					))}
+				</div>
+			)}
+
+			<CollapsibleRegion
 				id={detailsId}
-				aria-hidden={!expanded}
-				inert={!expanded}
-				className={styles.collapseRegion({
-					expanded,
-				})}
+				expanded={expanded}
+				innerClassName={styles.collapseInner}
 			>
-				<div className={styles.collapseInner}>
+				<div className={styles.projectControls}>
 					<Input
 						id={`${detailsId}-root-folder`}
 						label={translate(
@@ -101,50 +239,111 @@ export function FolderSettings({
 							locale,
 							"folder.none",
 						)}
+						className={styles.pathInput}
+						suffix={rootFolder === null ?
+							undefined :
+							<button
+								type="button"
+								className={styles.devIgnoreButton}
+								disabled={disabled || projectIgnoreExists === null}
+								title={translate(
+									locale,
+									projectIgnoreExists === null ?
+										"folder.devIgnore.loading" :
+										projectIgnoreExists ?
+											"folder.devIgnore.open" :
+											"folder.devIgnore.create",
+								)}
+								onClick={onDevIgnore}
+							>
+								<ShieldCheck
+									size={14}
+									strokeWidth={2}
+									aria-hidden="true"
+								/>
+								<span>
+									{translate(
+										locale,
+										"folder.devIgnore.label",
+									)}
+								</span>
+							</button>}
 						readOnly
 					/>
 
-					<div className={styles.actions}>
-						<Button
-							disabled={disabled}
-							onClick={onSelectFolder}
-						>
+					<div
+						className={styles.actionsField}
+						onBlur={event => {
+							const nextTarget = event.relatedTarget
+
+							if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget))
+								setActionMenuOpen(false)
+						}}
+					>
+						<span className={styles.actionsLabel}>
 							{translate(
 								locale,
-								rootFolder === null ?
-									"folder.select" :
-									"folder.change",
+								"folder.actions.label",
 							)}
-						</Button>
+						</span>
 
-						{rootFolder !== null && (
-							<>
-								<Button
-									variant="secondary"
-									disabled={disabled}
-									onClick={onOpenFolder}
-								>
-									{translate(
-										locale,
-										"folder.openExplorer",
-									)}
-								</Button>
+						<div className={styles.actionControl}>
+							<button
+								type="button"
+								className={styles.actionExecuteButton}
+								disabled={disabled}
+								onClick={() => executeAction(currentAction.value)}
+							>
+								{currentAction.label}
+							</button>
 
-								<Button
-									variant="ghost"
-									disabled={disabled}
-									onClick={onCloseFolder}
+							<button
+								type="button"
+								aria-haspopup="menu"
+								aria-expanded={actionMenuOpen}
+								aria-label={translate(
+									locale,
+									"folder.actions.label",
+								)}
+								className={styles.actionMenuButton}
+								disabled={disabled}
+								onClick={() => setActionMenuOpen(open => !open)}
+							>
+								<ChevronDown
+									size={14}
+									aria-hidden="true"
+								/>
+							</button>
+
+							{actionMenuOpen && (
+								<div
+									role="menu"
+									className={styles.actionMenu}
 								>
-									{translate(
-										locale,
-										"folder.close",
-									)}
-								</Button>
-							</>
-						)}
+									{actions.map(action => (
+										<button
+											key={action.value}
+											type="button"
+											role="menuitem"
+											className={styles.actionMenuItem({
+												selected: action.value === currentAction.value,
+											})}
+											onClick={() => {
+												onSelectedActionChange(action.value)
+												setActionMenuOpen(false)
+											}}
+										>
+											{action.label}
+										</button>
+									))}
+								</div>
+							)}
+						</div>
 					</div>
 				</div>
-			</div>
+			</CollapsibleRegion>
+
+			{children}
 		</section>
 	)
 }

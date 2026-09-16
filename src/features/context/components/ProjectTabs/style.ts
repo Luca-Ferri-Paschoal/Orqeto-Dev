@@ -7,45 +7,52 @@ interface TabStyleParams {
 
 export const styles = {
 	root: cn(
-		"flex min-w-0 items-end gap-1",
-		"rounded-xl border border-[var(--border-color)]",
-		"bg-[var(--background-4)] px-1.5 pt-1.5",
-		"shadow-sm",
+		"relative flex h-9 min-w-0 items-stretch",
+		"overflow-hidden rounded-lg border border-[var(--border-color)]",
+		"bg-[var(--background-4)] shadow-sm",
 	),
 
 	list: cn(
-		"flex min-w-0 flex-1 items-end gap-1",
-		"overflow-x-auto overscroll-x-contain",
-		"[scrollbar-width:thin]",
+		"orqeto-scroll-area relative z-10",
+		"flex h-full min-w-0 flex-1 items-stretch",
+		"overflow-x-auto overflow-y-hidden overscroll-x-contain",
 	),
 
-	tabSlot: cn("relative flex min-w-20 max-w-48 shrink items-end"),
+	tabSlot: cn(
+		"relative flex h-full min-w-28 flex-1 basis-0 shrink items-stretch",
+		"after:absolute after:right-0 after:top-2 after:bottom-2 after:w-px",
+		"after:bg-[var(--border-color)]",
+	),
 
 	tab: ({ active, dragging }: TabStyleParams) => cn(
-		"group flex h-8 min-w-20 max-w-48 shrink items-center",
+		"group relative flex h-full w-full min-w-0 items-center",
 		"cursor-grab select-none",
-		"rounded-t-lg border border-b-0",
-		"transition",
+		"transition-[background-color,color,box-shadow,border-color]",
+		"duration-150",
 		active ?
 			[
-				"border-[var(--border-color-strong)] bg-[var(--background-2)]",
+				"z-10 rounded-md border border-[var(--border-color)]",
+				"bg-[var(--background-2)]",
 				"text-[var(--font-color)]",
+				"shadow-sm",
 			] :
 			[
-				"border-transparent bg-[var(--background-3)]",
-				"text-[var(--font-color-secondary)] hover:bg-[var(--background-3)]",
+				"border border-transparent bg-transparent",
+				"text-[var(--font-color-secondary)]",
+				"hover:bg-[var(--background-3)]",
+				"hover:text-[var(--font-color)]",
 			],
 		dragging && "cursor-grabbing opacity-45",
 	),
 
 	dropMarker: cn(
-		"h-7 w-0.5 shrink-0 self-center rounded-full",
+		"relative z-20 h-full w-0.5 shrink-0 self-stretch rounded-full",
 		"bg-[var(--accent-button-color)] shadow-[0_0_0_1px_var(--drop-marker-outline)]",
 	),
 
 	selectButton: cn(
 		"flex h-full min-w-0 flex-1 items-center",
-		"px-2.5 text-left text-xs font-semibold",
+		"px-3 text-left text-xs font-semibold",
 		"max-[480px]:px-2",
 		"focus-visible:outline-none",
 		"disabled:cursor-not-allowed disabled:opacity-60",
@@ -54,7 +61,7 @@ export const styles = {
 	label: "truncate",
 
 	closeButton: cn(
-		"mr-1 inline-flex size-5 shrink-0 items-center justify-center",
+		"mr-1.5 inline-flex size-5 shrink-0 items-center justify-center",
 		"rounded text-[var(--font-color-subtle)] transition",
 		"hover:bg-[var(--background-4)] hover:text-[var(--font-color-secondary)]",
 		"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]",
@@ -62,10 +69,11 @@ export const styles = {
 	),
 
 	addButton: cn(
-		"mb-1 inline-flex size-7 shrink-0 items-center justify-center",
-		"rounded-md text-[var(--font-color-secondary)] transition",
-		"hover:bg-[var(--background-2)] hover:text-[var(--font-color)]",
-		"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]",
+		"relative z-10 inline-flex h-full w-10 shrink-0 items-center justify-center",
+		"border-l border-[var(--border-color)]",
+		"text-[var(--font-color-secondary)] transition",
+		"hover:bg-[var(--background-3)] hover:text-[var(--font-color)]",
+		"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring-color)]",
 		"disabled:cursor-not-allowed disabled:opacity-50",
 	),
 } as const

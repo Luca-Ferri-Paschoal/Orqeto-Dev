@@ -1,5 +1,5 @@
 import type {
-	GeneratedFile,
+	ContextSelectionFile,
 	SkippedFile,
 } from "./types"
 import {
@@ -20,6 +20,96 @@ export interface ContextFilterHistoryEntry extends ContextFilter {
 	lastUsedAt: number
 }
 
+const MAX_SAFE_REGEX_PATTERN_LENGTH = 1_024
+
+interface RegexGroupState {
+	hasBacktrackingConstruct: boolean
+}
+
+function isQuantifierStart(value: string | undefined): boolean {
+	return value === "*" || value === "+" || value === "?" || value === "{"
+}
+
+function isSafeContextRegex(pattern: string): boolean {
+	if (pattern.length > MAX_SAFE_REGEX_PATTERN_LENGTH)
+		return false
+
+	const groups: RegexGroupState[] = []
+	let inCharacterClass = false
+
+	for (let index = 0; index < pattern.length; index += 1) {
+		const character = pattern[index]
+
+		if (character === "\\") {
+			const escaped = pattern[index + 1]
+
+			if (escaped !== undefined && /[1-9]/.test(escaped))
+				return false
+
+			index += 1
+			continue
+		}
+
+		if (inCharacterClass) {
+			if (character === "]")
+				inCharacterClass = false
+			continue
+		}
+
+		if (character === "[") {
+			inCharacterClass = true
+			continue
+		}
+
+		if (character === "(") {
+			if (pattern[index + 1] === "?") {
+				if (pattern[index + 2] !== ":")
+					return false
+
+				index += 2
+			}
+
+			groups.push({ hasBacktrackingConstruct: false })
+			continue
+		}
+
+		if (character === "|") {
+			const current = groups.at(-1)
+
+			if (current !== undefined)
+				current.hasBacktrackingConstruct = true
+			continue
+		}
+
+		if (character === ")") {
+			const completed = groups.pop()
+
+			if (completed === undefined)
+				continue
+
+			const quantified = isQuantifierStart(pattern[index + 1])
+
+			if (quantified && completed.hasBacktrackingConstruct)
+				return false
+
+			const parent = groups.at(-1)
+
+			if (parent !== undefined && (quantified || completed.hasBacktrackingConstruct))
+				parent.hasBacktrackingConstruct = true
+			continue
+		}
+
+		if (isQuantifierStart(character)) {
+			const current = groups.at(-1)
+
+			if (current !== undefined)
+				current.hasBacktrackingConstruct = true
+		}
+	}
+
+	return !inCharacterClass && groups.length === 0
+}
+
 export function normalizeContextPathFilter(pattern: string): string {
 	return pattern.trim()
 }
@@ -36,6 +126,13 @@ export function getContextPathFilterError(
 	)
 		return null
 
+	if (!isSafeContextRegex(normalizedPattern)) {
+		return translate(
+			locale,
+			"context.filter.unsafeRegex",
+		)
+	}
+
 	try {
 		new RegExp(normalizedPattern)
 		return null
@@ -47,10 +144,10 @@ export function getContextPathFilterError(
 	}
 }
 
-export function filterContextFiles(
-	files: readonly GeneratedFile[],
+export function filterContextFiles<TFile extends ContextSelectionFile>(
+	files: readonly TFile[],
 	filter: ContextFilter,
-): GeneratedFile[] {
+): TFile[] {
 	const matcher = createMatcher(filter)
 
 	if (matcher === null)
@@ -100,6 +197,9 @@ function createMatcher(filter: ContextFilter): ((value: string) => boolean) | nu
 		return null
 
 	if (filter.mode === "regex") {
+		if (!isSafeContextRegex(normalizedPattern))
+			return null
+
 		const regex = new RegExp(normalizedPattern)
 
 		return value => regex.test(value)

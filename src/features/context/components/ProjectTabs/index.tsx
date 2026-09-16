@@ -5,6 +5,12 @@ import {
 	translate,
 } from "@/infra/i18n"
 import {
+	containsPhysicalPosition,
+	type PhysicalPosition,
+} from "@/shared/dom/physicalPosition"
+import { listen } from "@tauri-apps/api/event"
+import { getCurrentWindow } from "@tauri-apps/api/window"
+import {
 	Plus,
 	X,
 } from "lucide-react"
@@ -36,7 +42,13 @@ interface PointerDragState {
 	started: boolean
 }
 
+interface NativeDropPayload {
+	type: "enter" | "over" | "leave" | "drop"
+	position?: PhysicalPosition
+}
+
 const DRAG_START_DISTANCE = 8
+const EXTERNAL_DRAG_TAB_SWITCH_DELAY_MS = 250
 
 function getTabLabel(
 	tab: ProjectTab,
@@ -101,19 +113,233 @@ export function ProjectTabs({
 	const [draggedTabId, setDraggedTabId] = useState<string | null>(null)
 	const [insertionIndex, setInsertionIndex] = useState<number | null>(null)
 	const insertionIndexRef = useRef<number | null>(null)
+	const listRef = useRef<HTMLDivElement | null>(null)
 	const tabRefs = useRef(new Map<string, HTMLDivElement>())
 	const pointerDragRef = useRef<PointerDragState | null>(null)
 	const suppressedClickRef = useRef<string | null>(null)
+	const externalHoverTabRef = useRef<string | null>(null)
+	const externalHoverTimerRef = useRef<number | null>(null)
+	const activeTabIdRef = useRef(activeTabId)
+	const disabledRef = useRef(disabled)
+	const onSelectRef = useRef(onSelect)
 	const canClose = tabs.length > 1
 
 	useEffect(
 		() => {
-			tabRefs.current.get(activeTabId)?.scrollIntoView({
-				block: "nearest",
-				inline: "nearest",
-			})
+			activeTabIdRef.current = activeTabId
+			disabledRef.current = disabled
+			onSelectRef.current = onSelect
+		},
+		[
+			activeTabId,
+			disabled,
+			onSelect,
+		],
+	)
+
+	useEffect(
+		() => {
+			const list = listRef.current
+			const tab = tabRefs.current.get(activeTabId)
+
+			if (list === null || tab === undefined)
+				return
+
+			const listBounds = list.getBoundingClientRect()
+			const tabBounds = tab.getBoundingClientRect()
+			const hiddenOnLeft = tabBounds.left - listBounds.left
+			const hiddenOnRight = tabBounds.right - listBounds.right
+
+			if (hiddenOnLeft < 0)
+				list.scrollLeft += hiddenOnLeft
+			else if (hiddenOnRight > 0)
+				list.scrollLeft += hiddenOnRight
 		},
 		[activeTabId],
+	)
+
+	useEffect(
+		() => {
+			const element = listRef.current
+
+			if (element === null)
+				return
+
+			const scrollElement: HTMLDivElement = element
+
+			function handleHorizontalWheel(event: globalThis.WheelEvent): void {
+				const maximumScrollLeft = scrollElement.scrollWidth - scrollElement.clientWidth
+
+				if (maximumScrollLeft <= 1)
+					return
+
+				// While the tab strip actually overflows, the wheel belongs to the
+				// strip. Consume it even at either horizontal edge so the same
+				// gesture never leaks into the page's vertical scroller.
+				event.preventDefault()
+				event.stopPropagation()
+
+				const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ?
+					event.deltaY :
+					event.deltaX
+
+				if (delta === 0)
+					return
+
+				scrollElement.scrollLeft = Math.max(
+					0,
+					Math.min(
+						maximumScrollLeft,
+						scrollElement.scrollLeft + delta,
+					),
+				)
+			}
+
+			scrollElement.addEventListener(
+				"wheel",
+				handleHorizontalWheel,
+				{ passive: false },
+			)
+
+			return () => {
+				scrollElement.removeEventListener(
+					"wheel",
+					handleHorizontalWheel,
+				)
+			}
+		},
+		[],
+	)
+
+	useEffect(
+		() => {
+			let cancelled = false
+			let unlistenTauri: (() => void) | undefined
+			let unlistenNative: (() => void) | undefined
+
+			function cancelExternalHover(): void {
+				if (externalHoverTimerRef.current !== null) {
+					window.clearTimeout(externalHoverTimerRef.current)
+					externalHoverTimerRef.current = null
+				}
+
+				externalHoverTabRef.current = null
+			}
+
+			function handlePhysicalPosition(position: PhysicalPosition): void {
+				if (disabledRef.current) {
+					cancelExternalHover()
+					return
+				}
+
+				let hoveredTabId: string | null = null
+
+				for (const [tabId, element] of tabRefs.current) {
+					if (containsPhysicalPosition(
+						element,
+						position,
+					)) {
+						hoveredTabId = tabId
+						break
+					}
+				}
+
+				if (
+					hoveredTabId === null ||
+					hoveredTabId === activeTabIdRef.current
+				) {
+					cancelExternalHover()
+					return
+				}
+
+				if (externalHoverTabRef.current === hoveredTabId)
+					return
+
+				cancelExternalHover()
+				externalHoverTabRef.current = hoveredTabId
+				externalHoverTimerRef.current = window.setTimeout(
+					() => {
+						if (externalHoverTabRef.current !== hoveredTabId)
+							return
+
+						externalHoverTimerRef.current = null
+						externalHoverTabRef.current = null
+
+						if (activeTabIdRef.current !== hoveredTabId)
+							onSelectRef.current(hoveredTabId)
+					},
+					EXTERNAL_DRAG_TAB_SWITCH_DELAY_MS,
+				)
+			}
+
+			function disposeListeners(): void {
+				const tauriDisposer = unlistenTauri
+				const nativeDisposer = unlistenNative
+				unlistenTauri = undefined
+				unlistenNative = undefined
+				tauriDisposer?.()
+				nativeDisposer?.()
+			}
+
+			async function subscribe(): Promise<void> {
+				try {
+					const tauriDisposer = await getCurrentWindow().onDragDropEvent(event => {
+						if (
+							event.payload.type === "leave" ||
+							event.payload.type === "drop"
+						) {
+							cancelExternalHover()
+							return
+						}
+
+						handlePhysicalPosition(event.payload.position)
+					})
+
+					if (cancelled) {
+						tauriDisposer()
+						return
+					}
+
+					unlistenTauri = tauriDisposer
+					const nativeDisposer = await listen<NativeDropPayload>(
+						"native-drag-drop",
+						event => {
+							const payload = event.payload
+
+							if (
+								payload.type === "leave" ||
+								payload.type === "drop"
+							) {
+								cancelExternalHover()
+								return
+							}
+
+							if (payload.position !== undefined)
+								handlePhysicalPosition(payload.position)
+						},
+					)
+
+					if (cancelled) {
+						nativeDisposer()
+						return
+					}
+
+					unlistenNative = nativeDisposer
+				} catch {
+					disposeListeners()
+					cancelExternalHover()
+				}
+			}
+
+			void subscribe()
+
+			return () => {
+				cancelled = true
+				cancelExternalHover()
+				disposeListeners()
+			}
+		},
+		[],
 	)
 
 	function updateInsertionPosition(
@@ -256,6 +482,7 @@ export function ProjectTabs({
 	return (
 		<div className={styles.root}>
 			<div
+				ref={listRef}
 				role="tablist"
 				aria-label={translate(
 					locale,
