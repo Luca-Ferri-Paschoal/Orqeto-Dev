@@ -23,7 +23,10 @@ export function chooseLocalFileDestination(plan: PrepareProjectOverlayResult): L
 	const recommended = plan.recommendedCandidateIndex === null ?
 		null :
 		plan.candidates[plan.recommendedCandidateIndex]
-	const concrete = recommended && hasEvidence(recommended) ?
+	// The backend can certify an exact ZIP-root mapping using its complete
+	// existing parent hierarchy even when every incoming file is new.
+	// Do not undo that recommendation by checking only existing files here.
+	const concrete = recommended ?
 		[recommended] :
 		plan.candidates.filter(hasEvidence)
 	if (concrete.length === 1) {

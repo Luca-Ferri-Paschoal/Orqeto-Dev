@@ -3,6 +3,15 @@ fn recommended_candidate_index(
 	candidates: &[CandidatePlan],
 	manifest: &OverlayManifest,
 ) -> Option<usize> {
+	// New-file-only ROOT confidence is directory-based. Any distinct valid
+	// mapping means the user must decide, even if ROOT has more directory hits.
+	if candidates.iter().any(|candidate| {
+		has_complete_new_zip_root_directory_evidence(root, candidate, manifest) &&
+			has_competing_routing_mappings(candidate, candidates)
+	}) {
+		return None;
+	}
+
 	// A ZIP produced for Orqeto declares ROOT-relative paths. Once the exact
 	// ROOT mapping has strong real file evidence, preserve those declared paths
 	// instead of letting an equally plausible source-prefix relocation turn the

@@ -49,18 +49,71 @@ fn has_coherent_new_file_zip_root_evidence(
     parent_paths.len() >= file_count.min(3) && independent_branches.len() >= 2
 }
 
+// A patch whose two payload files are both NEW can still be unambiguously
+// rooted: every declared parent directory is already present in the selected
+// project, in separate branches, with at least one deeper (3+ levels) branch.
+// Generic top-level scaffolding alone (e.g. docs/ + tests/) is not enough.
+// Never infer a destructive destination from directory-only evidence.
+fn has_complete_new_zip_root_directory_evidence(
+    root: &Path,
+    candidate: &CandidatePlan,
+    manifest: &OverlayManifest,
+) -> bool {
+    if !matches!(&manifest.kind, ManifestKind::Zip { .. }) ||
+        !is_exact_root_candidate(candidate) ||
+        candidate.candidate.matched_files != 0 ||
+        manifest.files.len() < 2 ||
+        !manifest.delete_paths.is_empty() ||
+        !manifest.delete_directories.is_empty() ||
+        !manifest.permanent_delete_directories.is_empty()
+    {
+        return false;
+    }
+    let Ok(ignore) = ProjectIgnore::load(root) else {
+        return false;
+    };
+    let mut parents = HashSet::new();
+    let mut branches = HashSet::new();
+    let mut has_deep_branch = false;
+    for file in &manifest.files {
+        let Some(parent) = file.relative_path.parent() else {
+            return false;
+        };
+        let components = normal_components(parent);
+        if components.is_empty() ||
+            count_existing_directory_depth(root, Path::new(""), &file.relative_path, &ignore) != components.len()
+        {
+            return false;
+        }
+        parents.insert(parent.to_path_buf());
+        has_deep_branch |= components.len() >= 3;
+        branches.insert(components.iter().take(2)
+            .map(|component| component.to_string_lossy().to_lowercase())
+            .collect::<Vec<_>>().join("/"));
+    }
+    parents.len() >= 2 && branches.len() >= 2 && has_deep_branch
+}
+
+fn has_competing_routing_mappings(
+    candidate: &CandidatePlan,
+    candidates: &[CandidatePlan],
+) -> bool {
+    candidates.iter().any(|other| other.mapping_key != candidate.mapping_key)
+}
+
 fn is_new_file_heavy_root_evidence(
     root: &Path,
     candidate: &CandidatePlan,
     manifest: &OverlayManifest,
 ) -> bool {
-    has_coherent_new_file_zip_root_evidence(root, candidate, manifest) &&
-        candidate.candidate.matched_files < minimum_zip_root_file_matches(manifest.files.len()) &&
-        !has_structurally_anchored_zip_root_evidence(
-            candidate,
-            manifest.files.len(),
-            expected_zip_root_directory_matches(manifest),
-        )
+    has_complete_new_zip_root_directory_evidence(root, candidate, manifest) ||
+        (has_coherent_new_file_zip_root_evidence(root, candidate, manifest) &&
+            candidate.candidate.matched_files < minimum_zip_root_file_matches(manifest.files.len()) &&
+            !has_structurally_anchored_zip_root_evidence(
+                candidate,
+                manifest.files.len(),
+                expected_zip_root_directory_matches(manifest),
+            ))
 }
 
 fn has_competing_file_mappings(

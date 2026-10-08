@@ -268,7 +268,8 @@ fn has_strong_zip_root_evidence(
 			candidate,
 			file_count,
 			expected_zip_root_directory_matches(manifest),
-		) || has_coherent_new_file_zip_root_evidence(root, candidate, manifest)
+		) || has_coherent_new_file_zip_root_evidence(root, candidate, manifest) ||
+		has_complete_new_zip_root_directory_evidence(root, candidate, manifest)
 }
 
 fn strong_exact_zip_root_match_index(
@@ -278,6 +279,8 @@ fn strong_exact_zip_root_match_index(
 ) -> Option<usize> {
 	candidates.iter().position(|candidate| {
 		has_strong_zip_root_evidence(root, candidate, manifest) &&
+			!(has_complete_new_zip_root_directory_evidence(root, candidate, manifest) &&
+				has_competing_routing_mappings(candidate, candidates)) &&
 			!(is_new_file_heavy_root_evidence(root, candidate, manifest) &&
 				has_competing_file_mappings(candidate, candidates))
 	})

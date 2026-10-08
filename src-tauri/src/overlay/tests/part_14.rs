@@ -163,3 +163,96 @@ fn br_route_002_two_file_incremental_one_exact_and_two_existing_branches() {
     assert_eq!(prepared.candidates[0].matched_files, 1);
     assert_eq!(prepared.candidates[0].matched_directories, 5);
 }
+
+#[test]
+fn br_route_002_p6435_all_new_files_in_complete_root_hierarchy_apply_without_modal() {
+    let temp = TestDirectory::new();
+    let archive = temp.path.join("taurus-P6_4_35-field-replay-diagnostics-NOT-APP-PATCH.zip");
+    let root = temp.path.join("taurus-project");
+    // Same paths and parent depths as the reported real ZIP. Both files are new,
+    // so evidence is 0 exact files + 4 existing parent directories.
+    let entries = [
+        ("docs/P6_4_35_FIELD_REPLAY_HANDOFF.md", "handoff"),
+        ("tests/selection/fixtures/p6435-field-road-closures.json", "{}"),
+    ];
+    write_test_zip(&archive, &entries);
+    fs::create_dir_all(root.join("docs")).unwrap();
+    fs::create_dir_all(root.join("tests/selection/fixtures")).unwrap();
+
+    let prepared = prepare_project_overlay_blocking(
+        root.to_string_lossy().into_owned(),
+        vec![archive.to_string_lossy().into_owned()],
+    ).unwrap();
+    assert_eq!(prepared.file_count, 2);
+    assert_eq!(prepared.recommended_candidate_index, Some(0));
+    assert_eq!(prepared.candidates.len(), 1);
+    assert_eq!(prepared.candidates[0].destination_relative_path, "./");
+    assert_eq!(prepared.candidates[0].source_prefix, "");
+    assert_eq!(prepared.candidates[0].matched_files, 0);
+    assert_eq!(prepared.candidates[0].matched_directories, 4);
+}
+
+#[test]
+fn br_route_002_all_new_files_missing_parent_branch_still_require_confirmation() {
+    let temp = TestDirectory::new();
+    let archive = temp.path.join("taurus-new-files.zip");
+    let root = temp.path.join("taurus-project");
+    write_test_zip(&archive, &[
+        ("docs/P6_4_35_FIELD_REPLAY_HANDOFF.md", "handoff"),
+        ("tests/selection/fixtures/p6435-field-road-closures.json", "{}"),
+    ]);
+    fs::create_dir_all(root.join("docs")).unwrap();
+    fs::create_dir_all(root.join("tests/selection")).unwrap(); // Missing fixtures/
+    let prepared = prepare_project_overlay_blocking(
+        root.to_string_lossy().into_owned(),
+        vec![archive.to_string_lossy().into_owned()],
+    ).unwrap();
+    assert_eq!(prepared.recommended_candidate_index, None);
+    assert!(prepared.root_candidate.is_some());
+}
+
+#[test]
+fn br_route_002_all_new_files_generic_shallow_directories_do_not_force_root() {
+    let temp = TestDirectory::new();
+    let archive = temp.path.join("unrelated-new-files.zip");
+    let root = temp.path.join("unrelated-project");
+    write_test_zip(&archive, &[
+        ("docs/new.md", "docs"),
+        ("tests/new.json", "{}"),
+    ]);
+    fs::create_dir_all(root.join("docs")).unwrap();
+    fs::create_dir_all(root.join("tests")).unwrap();
+    let prepared = prepare_project_overlay_blocking(
+        root.to_string_lossy().into_owned(),
+        vec![archive.to_string_lossy().into_owned()],
+    ).unwrap();
+    assert_eq!(prepared.recommended_candidate_index, None);
+}
+
+#[test]
+fn br_route_002_all_new_files_with_competing_mapping_keep_manual_resolution() {
+    let temp = TestDirectory::new();
+    let archive = temp.path.join("taurus-new-files.zip");
+    let root = temp.path.join("taurus-project");
+    write_test_zip(&archive, &[
+        ("docs/P6_4_35_FIELD_REPLAY_HANDOFF.md", "handoff"),
+        ("tests/selection/fixtures/p6435-field-road-closures.json", "{}"),
+    ]);
+    fs::create_dir_all(root.join("docs")).unwrap();
+    fs::create_dir_all(root.join("tests/selection/fixtures")).unwrap();
+    let (root, manifest) = build_manifest(
+        &root.to_string_lossy(),
+        &[archive.to_string_lossy().into_owned()],
+    ).unwrap();
+    let mut candidates = build_candidates(&root, &manifest).unwrap().candidates;
+    let rooted = candidates.iter().find(|candidate| is_exact_root_candidate(candidate))
+        .unwrap().clone();
+    assert!(has_complete_new_zip_root_directory_evidence(&root, &rooted, &manifest));
+    let mut relocated = rooted.clone();
+    relocated.destination_relative_path = PathBuf::from("other-subproject");
+    relocated.candidate.destination_relative_path = "other-subproject".to_string();
+    relocated.mapping_key = rooted.mapping_key.iter().map(|key| format!("other-subproject/{key}")).collect();
+    relocated.score = rooted.score + 1;
+    candidates = vec![relocated, rooted];
+    assert_eq!(recommended_candidate_index(&root, &candidates, &manifest), None);
+}

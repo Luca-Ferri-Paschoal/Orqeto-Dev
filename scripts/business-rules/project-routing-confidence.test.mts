@@ -141,3 +141,27 @@ void test("Project change or stale handle blocks after asynchronous preparation"
 		)
 	}
 })
+
+void test("Certified ROOT recommendation with only directory matches applies directly", () => {
+	const directoryOnlyRoot = { ...root, matchedDirectories: 4 }
+	assert.deepEqual(
+		chooseLocalFileDestination(plan(
+			[directoryOnlyRoot],
+			0,
+			directoryOnlyRoot,
+		)),
+		{ kind: "direct", candidate: directoryOnlyRoot },
+	)
+})
+
+void test("Directory-only ROOT without backend recommendation still requires review", () => {
+	const directoryOnlyRoot = { ...root, matchedDirectories: 4 }
+	assert.deepEqual(
+		chooseLocalFileDestination(plan(
+			[directoryOnlyRoot],
+			null,
+			directoryOnlyRoot,
+		)),
+		{ kind: "review", candidates: [directoryOnlyRoot] },
+	)
+})
