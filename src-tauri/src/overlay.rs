@@ -82,4 +82,5 @@ mod tests {
 	include!("overlay/tests/part_12.rs");
     include!("overlay/tests/part_13.rs");
     include!("overlay/tests/part_14.rs");
+    include!("overlay/tests/part_15.rs");
 }

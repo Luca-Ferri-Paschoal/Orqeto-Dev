@@ -1,3 +1,9 @@
+fn has_root_level_zip_entries(manifest: &OverlayManifest) -> bool {
+    manifest.files.iter().any(|file| {
+        file.relative_path.parent().is_some_and(|parent| normal_components(parent).is_empty())
+    })
+}
+
 // File counts alone are not a reliable signal for incremental archives: a
 // patch with one existing file and three new siblings can still describe a
 // complete, unambiguous project-root mapping.
@@ -22,14 +28,23 @@ fn has_coherent_new_file_zip_root_evidence(
     };
     let mut parent_paths = HashSet::new();
     let mut independent_branches = HashSet::new();
+    let mut matched_nested_branches = HashSet::new();
+    let mut nested_files = 0_usize;
+    let mut root_level_files = 0_usize;
     for file in &manifest.files {
         let Some(parent) = file.relative_path.parent() else {
             return false;
         };
         let components = normal_components(parent);
+        // ZIPs may include root-level README/checksum files alongside the
+        // actual project patch. They have no parent directory to inspect,
+        // so they cannot invalidate complete hierarchy evidence from the
+        // nested files (nor contribute any positive directory evidence).
         if components.is_empty() {
-            return false;
+            root_level_files += 1;
+            continue;
         }
+        nested_files += 1;
         let expected_depth = components.len();
         // Require *every* intended parent path, not a pooled count that could
         // hide a missing directory behind other deeper paths.
@@ -42,11 +57,20 @@ fn has_coherent_new_file_zip_root_evidence(
         let branch = components.iter().take(2)
             .map(|component| component.to_string_lossy().to_lowercase())
             .collect::<Vec<_>>().join("/");
+        if root.join(&file.relative_path).is_file() {
+            matched_nested_branches.insert(branch.clone());
+        }
         independent_branches.insert(branch);
     }
-    // Independent parent branches corroborate the root-relative structure.
-    // One generic src/ directory shared by unrelated projects does not.
-    parent_paths.len() >= file_count.min(3) && independent_branches.len() >= 2
+    // Root-level attachments have no placement evidence. If they are present,
+    // demand two distinct exact-file anchors in separate project branches,
+    // not two coincidental filenames or one shared README at the ZIP root.
+    if root_level_files > 0 && (matched_files < 2 || matched_nested_branches.len() < 2) {
+        return false;
+    }
+    // Every nested file must have its full existing parent chain; independent
+    // branches corroborate the original root-relative hierarchy.
+    parent_paths.len() >= nested_files.min(3) && independent_branches.len() >= 2
 }
 
 // A patch whose two payload files are both NEW can still be unambiguously
@@ -109,11 +133,11 @@ fn is_new_file_heavy_root_evidence(
     has_complete_new_zip_root_directory_evidence(root, candidate, manifest) ||
         (has_coherent_new_file_zip_root_evidence(root, candidate, manifest) &&
             candidate.candidate.matched_files < minimum_zip_root_file_matches(manifest.files.len()) &&
-            !has_structurally_anchored_zip_root_evidence(
+            (!has_structurally_anchored_zip_root_evidence(
                 candidate,
                 manifest.files.len(),
                 expected_zip_root_directory_matches(manifest),
-            ))
+            ) || has_root_level_zip_entries(manifest)))
 }
 
 fn has_competing_file_mappings(

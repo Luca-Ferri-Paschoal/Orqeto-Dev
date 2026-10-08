@@ -263,12 +263,15 @@ fn has_strong_zip_root_evidence(
 	}
 
 	let file_count = manifest.files.len();
+	let coherent_hierarchy = has_coherent_new_file_zip_root_evidence(root, candidate, manifest);
+	let has_root_level_entries = has_root_level_zip_entries(manifest);
 	candidate.candidate.matched_files >= minimum_zip_root_file_matches(file_count) ||
-		has_structurally_anchored_zip_root_evidence(
+		(has_structurally_anchored_zip_root_evidence(
 			candidate,
 			file_count,
 			expected_zip_root_directory_matches(manifest),
-		) || has_coherent_new_file_zip_root_evidence(root, candidate, manifest) ||
+		) && (!has_root_level_entries || coherent_hierarchy)) ||
+		coherent_hierarchy ||
 		has_complete_new_zip_root_directory_evidence(root, candidate, manifest)
 }
 
