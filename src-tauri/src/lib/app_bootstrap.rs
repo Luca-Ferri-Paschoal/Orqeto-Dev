@@ -186,6 +186,9 @@ pub fn run() {
 					std::sync::atomic::AtomicBool::new(false),
 				);
 				window.on_window_event(move |event| {
+					if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
+						window_state::update_snap_corners(&native_window);
+					}
 					if matches!(
 						event,
 						WindowEvent::Focused(true) | WindowEvent::Resized(_)

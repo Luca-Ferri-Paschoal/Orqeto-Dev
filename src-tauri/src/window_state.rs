@@ -12,6 +12,8 @@ mod windows {
 		path::PathBuf,
 	};
 	use tauri::{Manager, WebviewWindow};
+	mod snap;
+	use snap::SnappedPlacement;
 
 	const STATE_VERSION: u8 = 1;
 	const STATE_FILE: &str = "main-window-placement.json";
@@ -49,11 +51,13 @@ mod windows {
 		normal_position: WinRect,
 		device: WinRect,
 	}
+
 	#[link(name = "user32")]
 	unsafe extern "system" {
 		fn GetWindowPlacement(hwnd: *mut c_void, placement: *mut WindowPlacement) -> i32;
 		fn SetWindowPlacement(hwnd: *mut c_void, placement: *const WindowPlacement) -> i32;
 	}
+
 	#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 	struct MonitorBounds {
 		x: i32,
@@ -96,6 +100,9 @@ mod windows {
 		monitors: Vec<MonitorBounds>,
 		normal_position: Bounds,
 		maximized: bool,
+		// Backwards-compatible with existing version-1 preference files.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		snapped: Option<SnappedPlacement>,
 	}
 	fn state_path(window: &WebviewWindow) -> Result<PathBuf, String> {
 		window
@@ -149,7 +156,10 @@ mod windows {
 		saved.version == STATE_VERSION &&
 		!current_monitors.is_empty() &&
 		saved.monitors == current_monitors &&
-		visible_normal_position(saved.normal_position, current_monitors)
+		visible_normal_position(saved.normal_position, current_monitors) &&
+		saved.snapped.as_ref().is_none_or(|snap| {
+			!saved.maximized && snap::valid_snapped_placement(snap, current_monitors)
+		})
 	}
 	fn get_placement(window: &WebviewWindow) -> Result<WindowPlacement, String> {
 		let hwnd = window.hwnd().map_err(|error| format!("Could not access window handle: {error}"))?;
@@ -179,14 +189,28 @@ mod windows {
 		if !can_restore(&saved, &monitors(window)?) {
 			return Ok(());
 		}
+		if let Some(snap) = &saved.snapped {
+			// Docking is only safe when the exact usable area has not changed
+			// (including taskbar position and system reserved screen space).
+			if !snap::work_area_unchanged(snap, snap::current_work_area(snap.visible_frame)) {
+				return Ok(());
+			}
+		}
 
 		let hwnd = window.hwnd().map_err(|error| format!("Could not access window handle: {error}"))?;
-		let mut placement = get_placement(window)?;
+		let initial = get_placement(window)?;
+		let mut placement = initial;
 		placement.normal_position = saved.normal_position.into();
 		placement.show_cmd = if saved.maximized { SW_SHOWMAXIMIZED } else { SW_SHOWNORMAL };
 		placement.flags = 0;
 		if unsafe { SetWindowPlacement(hwnd.0, &placement) } == 0 {
 			return Err("Windows could not restore the window placement.".to_string());
+		}
+		if let Some(snapped) = saved.snapped {
+			if let Err(error) = snap::restore_snapped(hwnd.0, &snapped) {
+				let _ = unsafe { SetWindowPlacement(hwnd.0, &initial) };
+				return Err(error);
+			}
 		}
 		Ok(())
 	}
@@ -196,12 +220,20 @@ mod windows {
 			return Ok(());
 		}
 		let placement = get_placement(window)?;
+		let maximized = placement.show_cmd == SW_SHOWMAXIMIZED ||
+			(placement.flags & WPF_RESTORETOMAXIMIZED != 0);
+		let snapped = if placement.show_cmd == SW_SHOWNORMAL && !maximized {
+			let hwnd = window.hwnd().map_err(|error| format!("Could not access window handle: {error}"))?;
+			snap::snapped_placement(hwnd.0)
+		} else {
+			None
+		};
 		let saved = SavedPlacement {
 			version: STATE_VERSION,
 			monitors,
 			normal_position: placement.normal_position.into(),
-			maximized: placement.show_cmd == SW_SHOWMAXIMIZED ||
-				(placement.flags & WPF_RESTORETOMAXIMIZED != 0),
+			maximized,
+			snapped,
 		};
 		if !can_restore(&saved, &saved.monitors) {
 			// Never overwrite a valid preference with a transient/invalid state.
@@ -224,69 +256,15 @@ mod windows {
 		}
 		outcome
 	}
-	#[cfg(test)]
-	mod tests {
-		use super::*;
-
-		fn monitor(x: i32, width: u32, scale_milli: u32) -> MonitorBounds {
-			MonitorBounds { x, y: 0, width, height: 1080, scale_milli }
-		}
-
-		fn saved(monitors: Vec<MonitorBounds>, rect: Bounds) -> SavedPlacement {
-			SavedPlacement {
-				version: STATE_VERSION,
-				monitors,
-				normal_position: rect,
-				maximized: false,
-			}
-		}
-
-		#[test]
-		fn restores_valid_placement_on_unchanged_monitor() {
-			let layout = vec![monitor(0, 1920, 1000)];
-			let previous = saved(layout.clone(), Bounds { left: 320, top: 180, right: 1020, bottom: 850 });
-			assert!(can_restore(&previous, &layout));
-		}
-
-		#[test]
-		fn rejects_screen_size_scale_and_monitor_changes() {
-			let layout = vec![monitor(0, 1920, 1000)];
-			let previous = saved(layout.clone(), Bounds { left: 320, top: 180, right: 1020, bottom: 850 });
-			assert!(!can_restore(&previous, &[monitor(0, 1280, 1000)]));
-			assert!(!can_restore(&previous, &[monitor(0, 1920, 1250)]));
-			assert!(!can_restore(&previous, &[monitor(0, 1920, 1000), monitor(-1920, 1920, 1000)]));
-		}
-
-		#[test]
-		fn allows_negative_coordinates_on_secondary_monitor() {
-			let mut layout = vec![monitor(0, 1920, 1000), monitor(-1920, 1920, 1000)];
-			layout.sort();
-			let previous = saved(layout.clone(), Bounds { left: -1300, top: 90, right: -600, bottom: 740 });
-			assert!(can_restore(&previous, &layout));
-		}
-
-		#[test]
-		fn rejects_offscreen_or_invalid_window_and_unknown_version() {
-			let layout = vec![monitor(0, 1920, 1000)];
-			let invalid = saved(layout.clone(), Bounds { left: 3000, top: 70, right: 3700, bottom: 750 });
-			assert!(!can_restore(&invalid, &layout));
-			let invalid_size = saved(layout.clone(), Bounds { left: 20, top: 20, right: 40, bottom: 30 });
-			assert!(!can_restore(&invalid_size, &layout));
-			let mut unknown_version = saved(layout.clone(), Bounds { left: 200, top: 50, right: 900, bottom: 720 });
-			unknown_version.version = 99;
-			assert!(!can_restore(&unknown_version, &layout));
-		}
-
-		#[test]
-		fn rejects_corrupt_saved_json() {
-			assert!(serde_json::from_slice::<SavedPlacement>(b"{not-json").is_err());
-			assert!(serde_json::from_slice::<SavedPlacement>(br#"{"version":1}"#).is_err());
-		}
+	pub(crate) fn update_snap_corners(window: &WebviewWindow) {
+		snap::update_snap_corners(window);
 	}
+	#[cfg(test)]
+	mod tests;
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) use windows::{restore, save};
+pub(crate) use windows::{restore, save, update_snap_corners};
 
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn restore(_window: &tauri::WebviewWindow) -> Result<(), String> {
@@ -297,3 +275,6 @@ pub(crate) fn restore(_window: &tauri::WebviewWindow) -> Result<(), String> {
 pub(crate) fn save(_window: &tauri::WebviewWindow) -> Result<(), String> {
 	Ok(())
 }
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn update_snap_corners(_window: &tauri::WebviewWindow) {}
