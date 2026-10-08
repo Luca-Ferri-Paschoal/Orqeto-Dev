@@ -215,6 +215,7 @@ fn minimum_zip_root_file_matches(file_count: usize) -> usize {
 fn has_structurally_anchored_zip_root_evidence(
 	candidate: &CandidatePlan,
 	file_count: usize,
+	required_directory_matches: usize,
 ) -> bool {
 	let matched_files = candidate.candidate.matched_files;
 
@@ -225,15 +226,28 @@ fn has_structurally_anchored_zip_root_evidence(
 		.max(3);
 
 	// A small ROOT-relative incremental ZIP (4–6 files) may introduce four new
-	// files while replacing just two. Two exact full-path matches and at least
-	// two existing directory levels per incoming file are enough to anchor the
-	// mapping in the initiating project without asking to choose ROOT again.
+	// files while replacing just two. Two exact full-path matches and the
+	// existing parent hierarchy are enough to anchor the mapping in the initiating
+	// project without asking to choose ROOT again. A file directly under `docs/`
+	// has only one parent level: never demand two matches from that file.
 	// Keep single-file coincidences, directory-only matches, and larger archives
 	// behind the existing conservative thresholds.
 	let compact_incremental = (4..=6).contains(&file_count) && matched_files >= 2;
 
 	(matched_files >= anchored_minimum || compact_incremental) &&
-		candidate.candidate.matched_directories >= file_count.saturating_mul(2)
+		// Do not let a flat ZIP with only coincidental filenames pass as an
+		// anchored project: require at least one parent level per incoming file
+		// on average, as well as all of the expected (up to two) parent matches.
+		required_directory_matches >= file_count &&
+		candidate.candidate.matched_directories >= required_directory_matches
+}
+
+fn expected_zip_root_directory_matches(manifest: &OverlayManifest) -> usize {
+	manifest.files.iter().map(|file| {
+		file.relative_path.parent().map_or(0, |parent| {
+			parent.components().take(2).count()
+		})
+	}).sum()
 }
 
 fn has_strong_zip_root_evidence(
@@ -252,6 +266,7 @@ fn has_strong_zip_root_evidence(
 		has_structurally_anchored_zip_root_evidence(
 			candidate,
 			file_count,
+			expected_zip_root_directory_matches(manifest),
 		)
 }
 

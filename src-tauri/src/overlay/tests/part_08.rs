@@ -178,6 +178,7 @@
 		assert!(!has_structurally_anchored_zip_root_evidence(
 			&candidate,
 			13,
+			26,
 		));
 	}
 
@@ -241,14 +242,57 @@
 		};
 
 		// Many common folders cannot compensate for a single exact file match.
-		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 6));
+		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 6, 12));
 		// Two exact files without deep shared parent paths are not enough either.
 		candidate.candidate.matched_files = 2;
 		candidate.candidate.matched_directories = 11;
-		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 6));
+		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 6, 12));
 		candidate.candidate.matched_directories = 12;
-		assert!(has_structurally_anchored_zip_root_evidence(&candidate, 6));
+		assert!(has_structurally_anchored_zip_root_evidence(&candidate, 6, 12));
 		// Larger ZIPs still use the stronger original coverage threshold.
 		candidate.candidate.matched_directories = 99;
-		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 13));
+		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 13, 26));
 	}
+
+	#[test]
+	fn br_route_002_taurus_six_file_mixed_depth_incremental_resolves_exact_root() {
+		let test_directory = TestDirectory::new();
+		let archive_path = test_directory.path.join("taurus-incremental.zip");
+		let project_root = test_directory.path.join("taurus-project");
+		// Mirrors the reported ZIP: three exact files and eleven existing
+		// parent-directory matches, including two one-level docs/ entries.
+		let entries = [
+			("src/components/MapEditor.tsx", "map"),
+			("src/workers/singleFaceSelection.worker.ts", "worker"),
+			("src/lib/selection-engine/nonMaterialGapCertificate.ts", "certificate"),
+			("tests/selection/p6-4-26-non-material-road-gap-proof.test.ts", "test"),
+			("docs/EXECUTION_STATUS.md", "status"),
+			("docs/P6_4_26_NON_MATERIAL_GAP_PERIMETER.md", "docs"),
+		];
+		write_test_zip(&archive_path, &entries);
+
+		for (index, (path, content)) in entries.iter().enumerate() {
+			let destination = project_root.join(path);
+			fs::create_dir_all(destination.parent().expect("file has a parent"))
+				.expect("existing project hierarchy should be present");
+			if index < 3 {
+				write_test_file(&destination, content);
+			}
+		}
+
+		let prepared = prepare_project_overlay_blocking(
+			project_root.to_string_lossy().into_owned(),
+			vec![archive_path.to_string_lossy().into_owned()],
+		)
+		.expect("mixed-depth incremental ZIP should prepare successfully");
+
+		assert!(!prepared.ambiguity_limit_exceeded);
+		assert_eq!(prepared.file_count, 6);
+		assert_eq!(prepared.recommended_candidate_index, Some(0));
+		let recommended = &prepared.candidates[0];
+		assert_eq!(recommended.destination_relative_path, "./");
+		assert_eq!(recommended.source_prefix, "");
+		assert_eq!(recommended.matched_files, 3);
+		assert_eq!(recommended.matched_directories, 11);
+	}
+
