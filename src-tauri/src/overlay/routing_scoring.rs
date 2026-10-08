@@ -218,15 +218,21 @@ fn has_structurally_anchored_zip_root_evidence(
 ) -> bool {
 	let matched_files = candidate.candidate.matched_files;
 
-	// Incremental ZIPs can add slightly more files than they replace. Relax the
-	// strict-majority threshold by at most one exact file, and only when the new
-	// paths are deeply anchored in the existing project hierarchy. Directory
-	// overlap alone is never sufficient.
+	// Larger incremental ZIPs may add slightly more files than they replace.
+	// Require substantial exact-file coverage plus existing parent hierarchy.
 	let anchored_minimum = minimum_zip_root_file_matches(file_count)
 		.saturating_sub(1)
 		.max(3);
 
-	matched_files >= anchored_minimum &&
+	// A small ROOT-relative incremental ZIP (4–6 files) may introduce four new
+	// files while replacing just two. Two exact full-path matches and at least
+	// two existing directory levels per incoming file are enough to anchor the
+	// mapping in the initiating project without asking to choose ROOT again.
+	// Keep single-file coincidences, directory-only matches, and larger archives
+	// behind the existing conservative thresholds.
+	let compact_incremental = (4..=6).contains(&file_count) && matched_files >= 2;
+
+	(matched_files >= anchored_minimum || compact_incremental) &&
 		candidate.candidate.matched_directories >= file_count.saturating_mul(2)
 }
 
@@ -260,5 +266,3 @@ fn strong_exact_zip_root_match_index(
 		)
 	})
 }
-
-

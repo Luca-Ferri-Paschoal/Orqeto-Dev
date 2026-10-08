@@ -181,3 +181,74 @@
 		));
 	}
 
+	#[test]
+	fn br_route_002_small_incremental_zip_with_two_exact_files_applies_at_root() {
+		let test_directory = TestDirectory::new();
+		let archive_path = test_directory.path.join("small-incremental.zip");
+		let project_root = test_directory.path.join("taurus-project");
+		// Mirrors a real 6-file ROOT-relative ZIP with two existing files and
+		// fifteen levels of existing parent-directory matches across its paths.
+		let entries = [
+			("src/components/MapEditor.tsx", "map"),
+			("src/lib/selection-engine/sessionBlockVisualCache.ts", "cache"),
+			("src/lib/selection-engine/selectedBlockSessionPaint.ts", "paint"),
+			("tests/selection/p6-4-23-pinned-selection-and-background-cache.test.ts", "test"),
+			("tests/selection/fixtures/real/p6-4-23-roaming-p6422-field-observation.json", "fixture"),
+			("docs/P6_4_23_PINNED_SELECTION_IDLE_CACHE.md", "docs"),
+		];
+		write_test_zip(&archive_path, &entries);
+
+		for (index, (path, content)) in entries.iter().enumerate() {
+			let destination = project_root.join(path);
+			fs::create_dir_all(destination.parent().expect("file has a parent"))
+				.expect("project parent hierarchy should exist");
+			if index < 2 {
+				write_test_file(&destination, content);
+			}
+		}
+
+		let prepared = prepare_project_overlay_blocking(
+			project_root.to_string_lossy().into_owned(),
+			vec![archive_path.to_string_lossy().into_owned()],
+		)
+		.expect("small incremental ZIP should prepare successfully");
+
+		assert!(!prepared.ambiguity_limit_exceeded);
+		assert_eq!(prepared.file_count, 6);
+		assert_eq!(prepared.recommended_candidate_index, Some(0));
+		let recommended = &prepared.candidates[0];
+		assert_eq!(recommended.destination_relative_path, "./");
+		assert_eq!(recommended.source_prefix, "");
+		assert_eq!(recommended.matched_files, 2);
+		assert_eq!(recommended.matched_directories, 15);
+	}
+
+	#[test]
+	fn br_route_002_small_incremental_requires_two_exact_files_and_real_hierarchy() {
+		let mut candidate = CandidatePlan {
+			candidate: OverlayDestinationCandidate {
+				destination_relative_path: "./".to_string(),
+				source_prefix: String::new(),
+				matched_files: 1,
+				matched_directories: 99,
+				source_context_matches: 0,
+			},
+			destination_relative_path: PathBuf::new(),
+			source_prefix: PathBuf::new(),
+			score: 0,
+			mapping_key: Vec::new(),
+			is_named_destination: false,
+		};
+
+		// Many common folders cannot compensate for a single exact file match.
+		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 6));
+		// Two exact files without deep shared parent paths are not enough either.
+		candidate.candidate.matched_files = 2;
+		candidate.candidate.matched_directories = 11;
+		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 6));
+		candidate.candidate.matched_directories = 12;
+		assert!(has_structurally_anchored_zip_root_evidence(&candidate, 6));
+		// Larger ZIPs still use the stronger original coverage threshold.
+		candidate.candidate.matched_directories = 99;
+		assert!(!has_structurally_anchored_zip_root_evidence(&candidate, 13));
+	}
