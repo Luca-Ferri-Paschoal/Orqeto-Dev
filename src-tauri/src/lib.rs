@@ -13,6 +13,7 @@ mod resource_limits;
 mod runtime_utils;
 mod safe_fs;
 mod storage;
+mod window_state;
 
 include!("lib/core_types_and_state.rs");
 include!("lib/context_text.rs");

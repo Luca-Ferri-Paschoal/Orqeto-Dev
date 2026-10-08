@@ -164,6 +164,13 @@ pub fn run() {
 			}
 
 			if let Some(window) = app.get_webview_window("main") {
+				if let Err(error) = window_state::restore(&window) {
+					eprintln!("Could not restore the main window geometry: {error}");
+				}
+				// A missing or invalid preference keeps the default Tauri placement.
+				if let Err(error) = window.show() {
+					eprintln!("Could not display the main window: {error}");
+				}
 				if let Err(error) = native_drop::install(&window) {
 					eprintln!("{error}");
 				}
@@ -186,6 +193,9 @@ pub fn run() {
 						let _ = native_drop::refresh(&native_window);
 					}
 					if let WindowEvent::CloseRequested { api, .. } = event {
+						if let Err(error) = window_state::save(&native_window) {
+							eprintln!("Could not save window placement: {error}");
+						}
 						if overlay::startup_tasks_pending().unwrap_or(true) {
 							// Even if the frontend close handler has not mounted yet, never
 							// terminate an in-progress filesystem recovery on window close.

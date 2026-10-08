@@ -64,6 +64,11 @@ async fn destroy_main_window(
 	let window = app
 		.get_webview_window("main")
 		.ok_or_else(|| "The main window is not available.".to_string())?;
+	// The frontend can cancel CloseRequested while a workspace is busy. Save
+	// again only after this final, authorized shutdown path is reached.
+	if let Err(error) = window_state::save(&window) {
+		eprintln!("Could not save window placement: {error}");
+	}
 	window
 		.destroy()
 		.map_err(|error| format!("Could not close the main window: {error}"))
