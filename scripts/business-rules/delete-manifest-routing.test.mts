@@ -18,7 +18,7 @@ void test(
 		])
 		assert.match(
 			routing,
-			/prepareProjectOverlay\(sourceTab\.rootFolder, \[path\]\)/,
+			/prepareProjectOverlay\(\s*sourceTab\.rootFolder,\s*\[path\],?\s*\)/,
 		)
 		assert.match(
 			manifest,

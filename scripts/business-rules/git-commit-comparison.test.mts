@@ -204,7 +204,7 @@ void test("commit comparison is integrated with Commit export, exact selected ha
 	)
 	assert.match(
 		picker,
-		/kind === "from" \? from : to/,
+		/kind === "from"\s*\?\s*from\s*:\s*to/,
 	)
 	assert.match(
 		picker,
@@ -216,19 +216,19 @@ void test("commit comparison is integrated with Commit export, exact selected ha
 	)
 	assert.match(
 		hook,
-		/listGitCommits\(rootFolder, 0\)/,
+		/listGitCommits\(\s*rootFolder,\s*0,?\s*\)/,
 	)
 	assert.match(
 		hook,
-		/listGitCommits\(rootFolder, fetchedCount\)/,
+		/listGitCommits\(\s*rootFolder,\s*fetchedCount,?\s*\)/,
 	)
 	assert.match(
 		actions,
-		/compareGitCommits\(root, from, to\)/,
+		/compareGitCommits\(\s*root,\s*from,\s*to,?\s*\)/,
 	)
 	assert.match(
 		actions,
-		/archiveContextSnapshot\(content, result\.fileCount, "commit"\)/,
+		/archiveContextSnapshot\(\s*content,\s*result\.fileCount,\s*"commit",?\s*\)/,
 	)
 	assert.match(
 		actions,

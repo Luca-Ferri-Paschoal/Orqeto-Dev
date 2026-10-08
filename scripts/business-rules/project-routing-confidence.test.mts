@@ -26,11 +26,11 @@ void test("BR-ROUTE-003 Files and Git preparation use only the initiating tab", 
 	])
 	assert.match(
 		files,
-		/prepareProjectOverlay\(sourceTab\.rootFolder, \[path\]\)/,
+		/prepareProjectOverlay\(\s*sourceTab\.rootFolder,\s*\[path\],?\s*\)/,
 	)
 	assert.match(
 		git,
-		/prepareGitPatch\(sourceTab\.rootFolder, patchPath\)/,
+		/prepareGitPatch\(\s*sourceTab\.rootFolder,\s*patchPath,?\s*\)/,
 	)
 	assert.match(
 		git,

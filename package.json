@@ -9,7 +9,12 @@
 			"test": "npm test"
 		}
 	},
+	"overrides": {
+		"brace-expansion": "5.0.12",
+		"source-map-js": "1.2.2"
+	},
 	"scripts": {
+		"audit:security": "npm audit --audit-level=low && npm --prefix integrations/vscode audit --audit-level=low",
 		"dev": "npm run dev:stop && npm run version:check && npm run vscode:package && tauri dev",
 		"dev:stop": "tsx scripts/stop-running-dev.mts",
 		"dev:web": "vite",

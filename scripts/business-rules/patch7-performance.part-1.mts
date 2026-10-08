@@ -93,11 +93,11 @@ void test(
 		)
 		assert.match(
 			files,
-			/prepareProjectOverlay\(sourceTab\.rootFolder, \[path\]\)/,
+			/prepareProjectOverlay\(\s*sourceTab\.rootFolder,\s*\[path\],?\s*\)/,
 		)
 		assert.match(
 			git,
-			/prepareGitPatch\(sourceTab\.rootFolder, patchPath\)/,
+			/prepareGitPatch\(\s*sourceTab\.rootFolder,\s*patchPath,?\s*\)/,
 		)
 	},
 )

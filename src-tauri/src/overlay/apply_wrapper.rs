@@ -1,3 +1,4 @@
+#[cfg(test)]
 fn apply_overlay_manifest_blocking(
     root: PathBuf,
     manifest: &OverlayManifest,
