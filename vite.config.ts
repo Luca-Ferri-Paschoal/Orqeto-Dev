@@ -11,6 +11,22 @@ export default defineConfig({
 		react(),
 		tailwindcss(),
 	],
+	build: {
+		rolldownOptions: {
+			output: {
+				codeSplitting: {
+					groups: [
+						{
+							name: "vendor",
+							test: /[\\/]node_modules[\\/]/,
+							priority: 10,
+							maxSize: 350_000,
+						},
+					],
+				},
+			},
+		},
+	},
 	resolve: {
 		alias: {
 			"@": path.resolve(

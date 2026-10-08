@@ -63,6 +63,8 @@ function counterLabelKey(outcome: OperationOutcome, counter: OperationCounter): 
 		return "status.apply.edited"
 	if (counter.kind === "deleted")
 		return "status.apply.deleted"
+	if (counter.kind === "permanent_deleted")
+		return "status.apply.permanentDeleted"
 	if (counter.kind === "unchanged")
 		return "status.apply.unchanged"
 	if (counter.kind === "rejected")
@@ -87,6 +89,17 @@ function formatCounter(
 	outcome: OperationOutcome,
 	counter: OperationCounter,
 ): string | null {
+	if (counter.kind === "protected") {
+		return translate(
+			locale,
+			"status.apply.protectedSecrets",
+			{
+				files: counter.files,
+				secrets: counter.detectedSecrets ?? 0,
+			},
+		)
+	}
+
 	if (counter.kind === "lines") {
 		return translate(
 			locale,
@@ -106,8 +119,9 @@ function formatCounter(
 	if (labelKey === null)
 		return null
 
-	const affectedDirectories = outcome.operationType === "files_apply" ||
-		outcome.operationType === "git_apply"
+	const affectedDirectories = counter.kind !== "permanent_deleted" && (
+		outcome.operationType === "files_apply" || outcome.operationType === "git_apply"
+	)
 
 	return `${translate(
 		locale,

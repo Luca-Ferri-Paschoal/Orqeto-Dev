@@ -1,4 +1,5 @@
 import {
+	createClientOperationId,
 	deriveOperationOutcomeStatus,
 	filesApplyOutcomeFromResult,
 	getRoutedApplyMessageKey,
@@ -6,6 +7,7 @@ import {
 } from "../../src/features/context/operationOutcome.ts"
 import { en } from "../../src/infra/i18n/locales/en.ts"
 import { ptBR } from "../../src/infra/i18n/locales/pt-BR.ts"
+import { readProjectFile } from "./testSupport/source.mts"
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
@@ -200,4 +202,63 @@ void test("BR-STATUS-006 routed preview/decision states never use the applied-su
 		assert.ok(messages["status.undo.restored"].length > 0)
 		assert.ok(messages["status.undo.removed"].length > 0)
 	}
+})
+
+void test("BR-STATUS-007 project actions share one local notice surface so the latest action replaces the previous one", async () => {
+	const [paneSource, ignoreControllerSource, stateSource, workspaceFactorySource] = await Promise.all([
+		readProjectFile("src/features/context/components/ProjectWorkspacePane/index.tsx"),
+		readProjectFile("src/features/context/components/ProjectWorkspacePane/hooks/useProjectIgnoreController.ts"),
+		readProjectFile("src/features/context/workspace/useWorkspaceState.ts"),
+		readProjectFile("src/features/context/workspace/createContextWorkspace.ts"),
+	])
+
+	assert.match(
+		ignoreControllerSource,
+		/workspaceRef\.current\.publishNotice\(/,
+	)
+	assert.doesNotMatch(
+		paneSource,
+		/ignoreNoticeState|setIgnoreNoticeState|\{ignoreNotice &&/,
+	)
+	assert.equal(
+		(paneSource.match(/<Notice\b/g) ?? []).length,
+		1,
+	)
+	assert.match(
+		stateSource,
+		/const publishNotice = useCallback\([\s\S]*setNotice\(nextNotice\)/,
+	)
+	assert.match(
+		workspaceFactorySource,
+		/notice,[\s\S]*publishNotice,/,
+	)
+})
+void test("BR-STATUS-008 validation work gets cancellable client IDs without widening authoritative outcome types", async () => {
+	const first = createClientOperationId("validation_operation")
+	const second = createClientOperationId("validation_operation")
+
+	assert.match(
+		first,
+		/^validation_operation:\d+:\d+$/,
+	)
+	assert.notEqual(
+		first,
+		second,
+	)
+
+	const source = await readProjectFile("src/features/context/operationOutcome.ts")
+	assert.match(
+		source,
+		/export type ClientOperationIdNamespace = OperationOutcomeType \| "validation_operation"/,
+	)
+	const outcomeTypeStart = source.indexOf("export type OperationOutcomeType =")
+	const namespaceStart = source.indexOf("export type ClientOperationIdNamespace =")
+	assert.ok(outcomeTypeStart >= 0 && namespaceStart > outcomeTypeStart)
+	assert.doesNotMatch(
+		source.slice(
+			outcomeTypeStart,
+			namespaceStart,
+		),
+		/validation_operation/,
+	)
 })

@@ -1,12 +1,9 @@
+import { readProjectFile } from "./testSupport/source.mts"
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 async function read(path: string): Promise<string> {
-	return readFile(
-		path,
-		"utf8",
-	)
+	return readProjectFile(path)
 }
 
 void test("context creation is one semantic card with project, commit, and validation modes", async () => {
@@ -46,11 +43,11 @@ void test("context creation is one semantic card with project, commit, and valid
 	)
 	assert.match(
 		folderSettings,
-		/onClick=\{\(\) => executeAction\(currentAction\.value\)\}/,
+		/onClick=\{\(\) => props\.onExecute\(props\.currentAction\.value\)\}/,
 	)
 	assert.match(
 		folderSettings,
-		/onSelectedActionChange\(action\.value\)/,
+		/props\.onSelect\(action\.value\)/,
 	)
 	assert.doesNotMatch(
 		folderSettings,
@@ -70,11 +67,11 @@ void test("context creation is one semantic card with project, commit, and valid
 	)
 	assert.match(
 		workspace,
-		/generateValidation\("typecheck"\)/,
+		/generateDiagnosticContextReport\(kind\)/,
 	)
 	assert.match(
 		workspace,
-		/generateValidation\("eslint"\)/,
+		/onGenerateDiagnostic\("eslint"\)/,
 	)
 	assert.match(
 		workspace,
@@ -82,7 +79,7 @@ void test("context creation is one semantic card with project, commit, and valid
 	)
 	assert.match(
 		workspace,
-		/showFilters=\{folderSectionExpanded\}/,
+		/showFilters=\{(?:props\.)?folderSectionExpanded\}/,
 	)
 	assert.match(
 		workspace,
@@ -133,10 +130,14 @@ void test("routing decision dialogs stay outside the inert workspace content", a
 
 	assert.match(
 		workspace,
-		/inert=\{isTabBusy\}[\s\S]*?\n\t\t\t<\/div>\n\n\t\t\t\{active && pendingGitPatch !== null/,
+		/inert=\{interaction\.isTabBusy\}[\s\S]*?<WorkspaceOverlays/,
 	)
 	assert.match(
 		workspace,
-		/\{active && pendingGitPatch !== null[\s\S]*?\{active && pendingOverlay !== null[\s\S]*?\{!suppressLoadingOverlay &&/,
+		/<WorkspaceOverlays[\s\S]*?\{!suppressLoadingOverlay &&/,
+	)
+	assert.match(
+		workspace,
+		/active && workspace\.pendingGitPatch !== null[\s\S]*?active && workspace\.pendingOverlay !== null/,
 	)
 })

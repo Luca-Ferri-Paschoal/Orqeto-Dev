@@ -1,9 +1,5 @@
 import { cn } from "@/shared/utils/cn"
 
-interface RoutedNoticeStyleParams {
-	success: boolean
-}
-
 export const styles = {
 	page: cn(
 		"orqeto-scroll-area",
@@ -33,51 +29,6 @@ export const styles = {
 		"flex-col",
 		"gap-3",
 		"pt-3",
-	),
-
-	routedNotice: ({ success }: RoutedNoticeStyleParams) => cn(
-		"flex",
-		"items-center",
-		"justify-between",
-		"gap-3",
-		"rounded-md",
-		"border",
-		"px-3",
-		"py-2",
-		"text-[11px]",
-		"leading-4",
-		success ?
-			cn(
-				"border-[var(--success-border-color)]",
-				"bg-[var(--success-background)]",
-				"text-[var(--success-font-color)]",
-			) :
-			cn(
-				"border-[var(--accent-border-color)]",
-				"bg-[var(--accent-background)]",
-				"text-[var(--accent-font-color)]",
-			),
-	),
-
-	routedNoticeText: cn(
-		"min-w-0",
-		"flex-1",
-	),
-
-	routedUndoButton: cn(
-		"shrink-0",
-		"rounded-md",
-		"border",
-		"border-current",
-		"px-2",
-		"py-1",
-		"text-[10px]",
-		"font-bold",
-		"transition",
-		"hover:opacity-80",
-		"focus-visible:outline-none",
-		"focus-visible:ring-2",
-		"focus-visible:ring-[var(--focus-ring-color)]",
 	),
 
 	header: cn(

@@ -1,25 +1,6 @@
+import { readProjectFile } from "./testSupport/source.mts"
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
-import path from "node:path"
 import test from "node:test"
-import { fileURLToPath } from "node:url"
-
-const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
-const rootDirectory = path.resolve(
-	scriptDirectory,
-	"..",
-	"..",
-)
-
-async function readProjectFile(relativePath: string): Promise<string> {
-	return readFile(
-		path.join(
-			rootDirectory,
-			relativePath,
-		),
-		"utf8",
-	)
-}
 
 void test(
 	"BR-STAGE-002 native virtual-drop staging uses unpredictable fresh directories",

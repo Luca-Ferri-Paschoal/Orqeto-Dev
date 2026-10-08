@@ -96,7 +96,7 @@ export const styles = {
 	),
 
 	sectionTitle: cn(
-		"text-[13px]",
+		"text-[14px]",
 		"font-bold",
 		"text-[var(--font-color)]",
 	),
@@ -124,6 +124,9 @@ export const styles = {
 		"py-2",
 		"text-center",
 		"transition",
+		enabled ?
+			"cursor-copy" :
+			"cursor-not-allowed",
 		enabled ?
 			[
 				"border-[var(--accent-border-color)]",

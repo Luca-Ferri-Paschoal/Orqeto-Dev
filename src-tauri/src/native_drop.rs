@@ -108,6 +108,7 @@ mod windows {
 			callback: NativeDropCallback,
 		) -> bool;
 		fn orqeto_native_drop_refresh(parent: *mut c_void) -> bool;
+		fn orqeto_native_window_bring_to_front(parent: *mut c_void) -> bool;
 	}
 
 	pub fn install(window: &WebviewWindow) -> Result<(), String> {
@@ -139,6 +140,27 @@ mod windows {
 			Ok(())
 		} else {
 			Err("Windows could not update the Orqeto Dev native drop target.".to_string())
+		}
+	}
+
+	pub fn bring_to_front(window: &WebviewWindow) -> Result<(), String> {
+		window
+			.show()
+			.map_err(|error| format!("Could not show the Orqeto Dev window: {error}"))?;
+		window
+			.unminimize()
+			.map_err(|error| format!("Could not restore the Orqeto Dev window: {error}"))?;
+		let hwnd = window
+			.hwnd()
+			.map_err(|error| format!("Could not obtain the native window: {error}"))?;
+		let raised = unsafe { orqeto_native_window_bring_to_front(hwnd.0) };
+
+		if raised {
+			Ok(())
+		} else {
+			window
+				.set_focus()
+				.map_err(|error| format!("Windows could not focus Orqeto Dev: {error}"))
 		}
 	}
 
@@ -225,6 +247,7 @@ mod windows {
 
 #[cfg(target_os = "windows")]
 pub use windows::{
+	bring_to_front,
 	install,
 	refresh,
 };
@@ -237,4 +260,17 @@ pub fn install(_window: &tauri::WebviewWindow) -> Result<(), String> {
 #[cfg(not(target_os = "windows"))]
 pub fn refresh(_window: &tauri::WebviewWindow) -> Result<(), String> {
 	Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn bring_to_front(window: &tauri::WebviewWindow) -> Result<(), String> {
+	window
+		.show()
+		.map_err(|error| format!("Could not show the Orqeto Dev window: {error}"))?;
+	window
+		.unminimize()
+		.map_err(|error| format!("Could not restore the Orqeto Dev window: {error}"))?;
+	window
+		.set_focus()
+		.map_err(|error| format!("Could not focus the Orqeto Dev window: {error}"))
 }

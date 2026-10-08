@@ -3,6 +3,7 @@ import type {
 	WorkMode,
 } from "../../types"
 import { styles } from "./style"
+import { getUndoHistoryLabel } from "./undoHistory"
 import {
 	type Locale,
 	translate,
@@ -37,45 +38,6 @@ interface ApplyDropZoneProps {
 	onUndo: (steps: number) => void
 }
 
-function getUndoHistoryLabel(
-	entry: OverlayUndoHistoryEntry,
-	locale: Locale,
-	historyTimeFormatter: Intl.DateTimeFormat,
-): string {
-	if (entry.sourceKind === "git") {
-		return translate(
-			locale,
-			entry.steps === 1 ?
-				"apply.undo.historyGitLatest" :
-				"apply.undo.historyGitPrevious",
-			{
-				steps: entry.steps,
-				patch: entry.sourceLabel ?? ".patch",
-				added: entry.addedFiles,
-				replaced: entry.replacedFiles,
-				deleted: entry.deletedFiles,
-				addedLines: entry.addedLines ?? 0,
-				deletedLines: entry.deletedLines ?? 0,
-				time: historyTimeFormatter.format(entry.appliedAtUnixMs),
-			},
-		)
-	}
-
-	return translate(
-		locale,
-		entry.steps === 1 ?
-			"apply.undo.historyLatest" :
-			"apply.undo.historyPrevious",
-		{
-			steps: entry.steps,
-			added: entry.addedFiles,
-			replaced: entry.replacedFiles,
-			deleted: entry.deletedFiles,
-			time: historyTimeFormatter.format(entry.appliedAtUnixMs),
-		},
-	)
-}
-
 export function ApplyDropZone({
 	enabled,
 	undoEnabled,
@@ -95,8 +57,8 @@ export function ApplyDropZone({
 		() => new Intl.DateTimeFormat(
 			locale,
 			{
-				hour: "2-digit",
-				minute: "2-digit",
+				dateStyle: "short",
+				timeStyle: "short",
 			},
 		),
 		[locale],

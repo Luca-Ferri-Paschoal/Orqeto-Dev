@@ -2,23 +2,21 @@ import type {
 	ContextSelectionFile,
 	SkippedFile,
 } from "./types"
+import type {
+	ContextFilter,
+	ContextFilterTarget,
+} from "@/domain/contextFilter"
+
+export type {
+	ContextFilter,
+	ContextFilterHistoryEntry,
+	ContextFilterMode,
+	ContextFilterTarget,
+} from "@/domain/contextFilter"
 import {
 	type Locale,
 	translate,
 } from "@/infra/i18n"
-
-export type ContextFilterTarget = "fileName" | "path"
-export type ContextFilterMode = "contains" | "exact" | "regex"
-
-export interface ContextFilter {
-	pattern: string
-	target: ContextFilterTarget
-	mode: ContextFilterMode
-}
-
-export interface ContextFilterHistoryEntry extends ContextFilter {
-	lastUsedAt: number
-}
 
 const MAX_SAFE_REGEX_PATTERN_LENGTH = 1_024
 

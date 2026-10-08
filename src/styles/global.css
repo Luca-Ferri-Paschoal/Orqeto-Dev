@@ -136,6 +136,18 @@ select {
 	font: inherit;
 }
 
+button:not(:disabled) {
+	cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	button:not(:disabled):hover {
+		outline: 1px solid var(--focus-border-color);
+		outline-offset: 1px;
+		filter: brightness(1.08);
+	}
+}
+
 .orqeto-scroll-area {
 	scrollbar-width: none;
 	-ms-overflow-style: none;

@@ -17,92 +17,175 @@
 	"contributes": {
 		"commands": [
 			{
-				"command": "orqetoDev.sendToContext",
-				"title": "Enviar para Orqeto Context",
-				"enablement": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+				"command": "orqetoDev.sendToContext.ptBR",
+				"title": "Enviar para o Orqeto Dev",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode"
 			},
 			{
-				"command": "orqetoDev.sendToContextAndCopy",
-				"title": "Send and copy Orqeto Context",
-				"enablement": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+				"command": "orqetoDev.sendToContext.en",
+				"title": "Send to Orqeto Dev",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode"
 			},
 			{
-				"command": "orqetoDev.removeFromContext",
-				"title": "Remove from Orqeto Context",
-				"enablement": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+				"command": "orqetoDev.sendToContextAndCopy.ptBR",
+				"title": "Enviar e copiar contexto do Orqeto Dev",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode"
 			},
 			{
-				"command": "orqetoDev.sendToIgnore",
-				"title": "Enviar para Orqeto Dev Ignore",
-				"enablement": "orqetoDev.projectOpen && orqetoDev.ignoreMode"
+				"command": "orqetoDev.sendToContextAndCopy.en",
+				"title": "Send and copy Orqeto Dev context",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode"
 			},
 			{
-				"command": "orqetoDev.removeFromIgnore",
+				"command": "orqetoDev.removeFromContext.ptBR",
+				"title": "Remover do contexto do Orqeto Dev",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode"
+			},
+			{
+				"command": "orqetoDev.removeFromContext.en",
+				"title": "Remove from Orqeto Dev context",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode"
+			},
+			{
+				"command": "orqetoDev.sendToIgnore.ptBR",
+				"title": "Enviar para o Orqeto Dev Ignore",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode"
+			},
+			{
+				"command": "orqetoDev.sendToIgnore.en",
+				"title": "Send to Orqeto Dev Ignore",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode"
+			},
+			{
+				"command": "orqetoDev.removeFromIgnore.ptBR",
+				"title": "Remover do Orqeto Dev Ignore",
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode"
+			},
+			{
+				"command": "orqetoDev.removeFromIgnore.en",
 				"title": "Remove from Orqeto Dev Ignore",
-				"enablement": "orqetoDev.projectOpen && orqetoDev.ignoreMode"
+				"enablement": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode"
 			},
 			{
-				"command": "orqetoDev.openFolder",
+				"command": "orqetoDev.openFolder.ptBR",
+				"title": "Abrir no Orqeto Dev"
+			},
+			{
+				"command": "orqetoDev.openFolder.en",
 				"title": "Open in Orqeto Dev"
 			}
 		],
 		"menus": {
 			"explorer/context": [
 				{
-					"command": "orqetoDev.sendToContext",
-					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode && resourceScheme == file",
+					"command": "orqetoDev.sendToContext.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localePtBR",
 					"group": "orqeto@1"
 				},
 				{
-					"command": "orqetoDev.sendToContextAndCopy",
-					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode && resourceScheme == file",
+					"command": "orqetoDev.sendToContext.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localeEnglish",
+					"group": "orqeto@1"
+				},
+				{
+					"command": "orqetoDev.sendToContextAndCopy.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localePtBR",
 					"group": "orqeto@2"
 				},
 				{
-					"command": "orqetoDev.removeFromContext",
-					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode && resourceScheme == file",
+					"command": "orqetoDev.sendToContextAndCopy.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localeEnglish",
+					"group": "orqeto@2"
+				},
+				{
+					"command": "orqetoDev.removeFromContext.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localePtBR",
 					"group": "orqeto@3"
 				},
 				{
-					"command": "orqetoDev.sendToIgnore",
-					"when": "orqetoDev.projectOpen && orqetoDev.ignoreMode && resourceScheme == file",
+					"command": "orqetoDev.removeFromContext.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localeEnglish",
+					"group": "orqeto@3"
+				},
+				{
+					"command": "orqetoDev.sendToIgnore.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localePtBR",
 					"group": "orqeto@1"
 				},
 				{
-					"command": "orqetoDev.removeFromIgnore",
-					"when": "orqetoDev.projectOpen && orqetoDev.ignoreMode && resourceScheme == file",
+					"command": "orqetoDev.sendToIgnore.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localeEnglish",
+					"group": "orqeto@1"
+				},
+				{
+					"command": "orqetoDev.removeFromIgnore.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localePtBR",
 					"group": "orqeto@2"
 				},
 				{
-					"command": "orqetoDev.openFolder",
-					"when": "resourceScheme == file && explorerResourceIsFolder && (orqetoDev.allowOpenSubfolders || resourcePath in orqetoDev.openProjectRootPaths)",
+					"command": "orqetoDev.removeFromIgnore.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode && resourceScheme == file && orqetoDev.localeEnglish",
+					"group": "orqeto@2"
+				},
+				{
+					"command": "orqetoDev.openFolder.ptBR",
+					"when": "resourceScheme == file && explorerResourceIsFolder && orqetoDev.allowOpenSubfolders && resourcePath not in orqetoDev.openProjectRootPaths && orqetoDev.localePtBR",
+					"group": "orqeto@4"
+				},
+				{
+					"command": "orqetoDev.openFolder.en",
+					"when": "resourceScheme == file && explorerResourceIsFolder && orqetoDev.allowOpenSubfolders && resourcePath not in orqetoDev.openProjectRootPaths && orqetoDev.localeEnglish",
 					"group": "orqeto@4"
 				}
 			],
 			"commandPalette": [
 				{
-					"command": "orqetoDev.sendToContext",
-					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+					"command": "orqetoDev.sendToContext.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && orqetoDev.localePtBR"
 				},
 				{
-					"command": "orqetoDev.sendToContextAndCopy",
-					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+					"command": "orqetoDev.sendToContext.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && orqetoDev.localeEnglish"
 				},
 				{
-					"command": "orqetoDev.removeFromContext",
-					"when": "orqetoDev.projectOpen && orqetoDev.createContextMode && !orqetoDev.ignoreMode"
+					"command": "orqetoDev.sendToContextAndCopy.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && orqetoDev.localePtBR"
 				},
 				{
-					"command": "orqetoDev.sendToIgnore",
-					"when": "orqetoDev.projectOpen && orqetoDev.ignoreMode"
+					"command": "orqetoDev.sendToContextAndCopy.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && orqetoDev.localeEnglish"
 				},
 				{
-					"command": "orqetoDev.removeFromIgnore",
-					"when": "orqetoDev.projectOpen && orqetoDev.ignoreMode"
+					"command": "orqetoDev.removeFromContext.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && orqetoDev.localePtBR"
 				},
 				{
-					"command": "orqetoDev.openFolder",
-					"when": "orqetoDev.allowOpenSubfolders || orqetoDev.workspaceRootExactlyOpen"
+					"command": "orqetoDev.removeFromContext.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && !orqetoDev.ignoreMode && orqetoDev.localeEnglish"
+				},
+				{
+					"command": "orqetoDev.sendToIgnore.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode && orqetoDev.localePtBR"
+				},
+				{
+					"command": "orqetoDev.sendToIgnore.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode && orqetoDev.localeEnglish"
+				},
+				{
+					"command": "orqetoDev.removeFromIgnore.ptBR",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode && orqetoDev.localePtBR"
+				},
+				{
+					"command": "orqetoDev.removeFromIgnore.en",
+					"when": "orqetoDev.projectOpen && !orqetoDev.projectBusy && orqetoDev.ignoreMode && orqetoDev.localeEnglish"
+				},
+				{
+					"command": "orqetoDev.openFolder.ptBR",
+					"when": "orqetoDev.allowOpenSubfolders && !orqetoDev.workspaceRootExactlyOpen && orqetoDev.localePtBR"
+				},
+				{
+					"command": "orqetoDev.openFolder.en",
+					"when": "orqetoDev.allowOpenSubfolders && !orqetoDev.workspaceRootExactlyOpen && orqetoDev.localeEnglish"
 				}
 			]
 		}

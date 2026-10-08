@@ -1,6 +1,7 @@
 import { cn } from "@/shared/utils/cn"
 
 interface ZoneStyleParams {
+	disabled: boolean
 	isDragging: boolean
 	variant: "add" | "remove"
 }
@@ -84,6 +85,7 @@ export const styles = {
 	),
 
 	zone: ({
+		disabled,
 		isDragging,
 		variant,
 	}: ZoneStyleParams) => cn(
@@ -100,6 +102,9 @@ export const styles = {
 		"py-5",
 		"text-center",
 		"transition",
+		disabled ?
+			"cursor-not-allowed" :
+			"cursor-copy",
 		variant === "remove" ?
 			[
 				"border-[var(--danger-border-color)]",

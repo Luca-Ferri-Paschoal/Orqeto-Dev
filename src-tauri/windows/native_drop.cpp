@@ -43,6 +43,7 @@ using DropCallback = void(__cdecl *)(
 
 DropCallback g_callback = nullptr;
 HWND g_parent = nullptr;
+std::atomic_bool g_drag_in_progress{false};
 
 struct Registration {
 	HWND hwnd;
@@ -50,6 +51,44 @@ struct Registration {
 };
 
 std::vector<Registration> g_registrations;
+
+bool BringRootWindowToFront(HWND window) {
+	if (window == nullptr)
+		return false;
+
+	HWND root = GetAncestor(window, GA_ROOT);
+	if (root == nullptr)
+		root = window;
+
+	if (IsIconic(root))
+		ShowWindowAsync(root, SW_RESTORE);
+	else
+		ShowWindowAsync(root, SW_SHOW);
+
+	const UINT positioning_flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER;
+	const bool raised_topmost = SetWindowPos(
+		root,
+		HWND_TOPMOST,
+		0,
+		0,
+		0,
+		0,
+		positioning_flags | SWP_NOACTIVATE
+	) != FALSE;
+	const bool restored_normal_z_order = SetWindowPos(
+		root,
+		HWND_NOTOPMOST,
+		0,
+		0,
+		0,
+		0,
+		positioning_flags | SWP_SHOWWINDOW
+	) != FALSE;
+	const bool brought_to_top = BringWindowToTop(root) != FALSE;
+	const bool focused = SetForegroundWindow(root) != FALSE;
+
+	return raised_topmost || restored_normal_z_order || brought_to_top || focused;
+}
 
 std::wstring Lower(std::wstring value) {
 	std::transform(
@@ -850,10 +889,16 @@ public:
 			SupportsPhysicalDrop(data_object) ||
 			SupportsVirtualDrop(data_object)
 		);
+		g_drag_in_progress.store(
+			valid_,
+			std::memory_order_release
+		);
 		*effect = valid_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
 
-		if (valid_)
+		if (valid_) {
+			BringRootWindowToFront(hwnd_);
 			Emit(kEventEnter, hwnd_, position);
+		}
 
 		return S_OK;
 	}
@@ -873,6 +918,10 @@ public:
 		if (valid_)
 			Emit(kEventLeave, hwnd_, POINTL{});
 		valid_ = false;
+		g_drag_in_progress.store(
+			false,
+			std::memory_order_release
+		);
 		return S_OK;
 	}
 
@@ -884,6 +933,10 @@ public:
 	) override {
 		if (!valid_ || data_object == nullptr) {
 			*effect = DROPEFFECT_NONE;
+			g_drag_in_progress.store(
+				false,
+				std::memory_order_release
+			);
 			return S_OK;
 		}
 
@@ -925,6 +978,10 @@ public:
 			Emit(kEventLeave, hwnd_, position);
 
 		valid_ = false;
+		g_drag_in_progress.store(
+			false,
+			std::memory_order_release
+		);
 		return S_OK;
 	}
 
@@ -972,6 +1029,14 @@ bool RefreshTargets() {
 	if (g_parent == nullptr)
 		return false;
 
+	// DragEnter raises/focuses the window. That focus transition can synchronously
+	// ask Rust to refresh the native targets while OLE is still using the current
+	// IDropTarget. Revoking it at that moment makes Explorer temporarily show
+	// DROPEFFECT_NONE until the pointer leaves and re-enters the window. Keep the
+	// current registrations stable for the lifetime of the active native drag.
+	if (g_drag_in_progress.load(std::memory_order_acquire))
+		return !g_registrations.empty();
+
 	ClearRegistrations();
 	RegisterTarget(g_parent);
 	EnumChildWindows(g_parent, RegisterChildWindow, 0);
@@ -1001,4 +1066,8 @@ extern "C" __declspec(dllexport) bool orqeto_native_drop_refresh(HWND parent) {
 	if (parent != nullptr)
 		g_parent = parent;
 	return RefreshTargets();
+}
+
+extern "C" __declspec(dllexport) bool orqeto_native_window_bring_to_front(HWND parent) {
+	return BringRootWindowToFront(parent);
 }

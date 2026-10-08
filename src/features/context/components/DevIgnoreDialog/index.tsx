@@ -85,6 +85,7 @@ export function DevIgnoreDialog({
 				<section
 					ref={addElementRef}
 					className={styles.zone({
+						disabled,
 						isDragging: isAddDragging,
 						variant: "add",
 					})}
@@ -122,6 +123,7 @@ export function DevIgnoreDialog({
 				<section
 					ref={removeElementRef}
 					className={styles.zone({
+						disabled,
 						isDragging: isRemoveDragging,
 						variant: "remove",
 					})}

@@ -3,6 +3,7 @@ import { cn } from "@/shared/utils/cn"
 interface TabStyleParams {
 	active: boolean
 	dragging: boolean
+	externalDrop: boolean
 }
 
 export const styles = {
@@ -24,7 +25,11 @@ export const styles = {
 		"after:bg-[var(--border-color)]",
 	),
 
-	tab: ({ active, dragging }: TabStyleParams) => cn(
+	tab: ({
+		active,
+		dragging,
+		externalDrop,
+	}: TabStyleParams) => cn(
 		"group relative flex h-full w-full min-w-0 items-center",
 		"cursor-grab select-none",
 		"transition-[background-color,color,box-shadow,border-color]",
@@ -42,6 +47,13 @@ export const styles = {
 				"hover:bg-[var(--background-3)]",
 				"hover:text-[var(--font-color)]",
 			],
+		externalDrop && !dragging && [
+			"cursor-copy",
+			"border-[var(--accent-border-strong-color)]",
+			"bg-[var(--accent-background-strong)]",
+			"text-[var(--font-color)]",
+			"ring-1 ring-inset ring-[var(--accent-focus-color)]",
+		],
 		dragging && "cursor-grabbing opacity-45",
 	),
 
@@ -52,6 +64,7 @@ export const styles = {
 
 	selectButton: cn(
 		"flex h-full min-w-0 flex-1 items-center",
+		"gap-1.5",
 		"px-3 text-left text-xs font-semibold",
 		"max-[480px]:px-2",
 		"focus-visible:outline-none",

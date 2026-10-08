@@ -1,26 +1,7 @@
 import { normalizeContextSelection } from "../../src/features/context/contextSelection.ts"
+import { readProjectFile } from "./testSupport/source.mts"
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
-import path from "node:path"
 import test from "node:test"
-import { fileURLToPath } from "node:url"
-
-const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
-const rootDirectory = path.resolve(
-	scriptDirectory,
-	"..",
-	"..",
-)
-
-async function readProjectFile(relativePath: string): Promise<string> {
-	return readFile(
-		path.join(
-			rootDirectory,
-			relativePath,
-		),
-		"utf8",
-	)
-}
 
 void test(
 	"BR-ADV-001 large Context membership remains reference-only and small subsets stay cheap to select",
@@ -107,7 +88,7 @@ void test(
 	async () => {
 		const [ai, docs, readme, packageJsonSource, cargo] = await Promise.all([
 			readProjectFile("docs/AI.md"),
-			readProjectFile("docs.txt"),
+			readProjectFile("docs/docs.md"),
 			readProjectFile("README.md"),
 			readProjectFile("package.json"),
 			readProjectFile("src-tauri/Cargo.toml"),

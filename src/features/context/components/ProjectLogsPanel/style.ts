@@ -1,0 +1,88 @@
+import { cn } from "@/shared/utils/cn"
+
+export const styles = {
+	container: cn(
+		"mt-3",
+		"border-t",
+		"border-[var(--border-color)]",
+		"pt-3",
+	),
+	header: cn(
+		"flex",
+		"flex-wrap",
+		"items-center",
+		"justify-between",
+		"gap-2",
+	),
+	statusGroup: cn(
+		"min-w-0",
+		"flex-1",
+	),
+	status: cn(
+		"text-[11px]",
+		"font-semibold",
+		"text-[var(--font-color-secondary)]",
+	),
+	command: cn(
+		"mt-0.5",
+		"truncate",
+		"font-mono",
+		"text-[10px]",
+		"text-[var(--font-color-muted)]",
+	),
+	actions: cn(
+		"flex",
+		"flex-wrap",
+		"justify-end",
+		"gap-1.5",
+	),
+	logList: cn(
+		"mt-3",
+		"max-h-72",
+		"min-h-24",
+		"overflow-auto",
+		"rounded-md",
+		"border",
+		"border-[var(--border-color)]",
+		"bg-[var(--background-1)]",
+		"p-2",
+		"font-mono",
+		"text-[10px]",
+		"leading-4",
+	),
+	empty: cn(
+		"flex",
+		"min-h-20",
+		"items-center",
+		"justify-center",
+		"text-[var(--font-color-muted)]",
+	),
+	entry: cn(
+		"grid",
+		"grid-cols-[7rem_3.5rem_minmax(0,1fr)]",
+		"gap-2",
+		"border-b",
+		"border-[var(--border-color)]",
+		"py-1",
+		"last:border-b-0",
+		"max-[640px]:grid-cols-1",
+		"max-[640px]:gap-0.5",
+	),
+	time: "text-[var(--font-color-muted)]",
+	stream: cn(
+		"font-semibold",
+		"uppercase",
+		"text-[var(--font-color-secondary)]",
+	),
+	message: cn(
+		"min-w-0",
+		"whitespace-pre-wrap",
+		"break-words",
+		"text-[var(--font-color)]",
+	),
+	warning: cn(
+		"mt-2",
+		"text-[10px]",
+		"text-[var(--font-color-muted)]",
+	),
+} as const

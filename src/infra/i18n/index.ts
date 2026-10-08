@@ -1,7 +1,9 @@
 import { en } from "./locales/en"
+import type { Locale } from "@/domain/locale"
+
+export type { Locale } from "@/domain/locale"
 import { ptBR } from "./locales/pt-BR"
 
-export type Locale = "pt-BR" | "en"
 export type TranslationKey = keyof typeof ptBR
 
 export interface TranslationVariables {

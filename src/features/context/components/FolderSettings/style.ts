@@ -18,8 +18,15 @@ export const styles = {
 		"gap-2",
 	),
 
+	titleGroup: cn(
+		"flex",
+		"min-w-0",
+		"items-center",
+		"gap-3",
+	),
+
 	title: cn(
-		"text-[13px]",
+		"text-[14px]",
 		"font-bold",
 		"text-[var(--font-color)]",
 	),

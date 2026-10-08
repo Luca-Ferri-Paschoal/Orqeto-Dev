@@ -1,0 +1,55 @@
+import { cn } from "@/shared/utils/cn"
+
+export const integrationStyles = {
+	integrationAction: cn(
+		"flex",
+		"flex-col",
+		"gap-1.5",
+	),
+	integrationRow: cn(
+		"flex",
+		"items-center",
+		"justify-between",
+		"gap-3",
+	),
+	integrationLabel: cn(
+		"text-[12px]",
+		"font-semibold",
+		"text-[var(--font-color-secondary)]",
+	),
+	integrationButton: cn(
+		"inline-flex",
+		"min-h-7",
+		"shrink-0",
+		"items-center",
+		"justify-center",
+		"rounded-md",
+		"border",
+		"border-[var(--accent-button-color)]",
+		"bg-[var(--accent-button-color)]",
+		"px-2.5",
+		"text-[9px]",
+		"font-semibold",
+		"text-[var(--button-font-color)]",
+		"transition",
+		"hover:border-[var(--accent-button-hover-color)]",
+		"hover:bg-[var(--accent-button-hover-color)]",
+		"focus-visible:outline-none",
+		"focus-visible:ring-2",
+		"focus-visible:ring-[var(--accent-focus-color)]",
+		"disabled:cursor-not-allowed",
+		"disabled:border-[var(--accent-button-disabled-color)]",
+		"disabled:bg-[var(--accent-button-disabled-color)]",
+		"disabled:text-[var(--button-font-color)]",
+	),
+	integrationStatusSuccess: cn(
+		"text-[9px]",
+		"leading-3.5",
+		"text-[var(--success-font-color)]",
+	),
+	integrationStatusError: cn(
+		"text-[9px]",
+		"leading-3.5",
+		"text-[var(--danger-font-color)]",
+	),
+} as const

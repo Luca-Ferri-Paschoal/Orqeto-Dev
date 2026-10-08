@@ -39,7 +39,14 @@ export const styles = {
 
 	secondaryModeLabel: cn(
 		"shrink-0",
-		"text-[11px]",
+		"text-[12px]",
+		"font-semibold",
+		"text-[var(--font-color-secondary)]",
+	),
+
+	validationModeLabel: cn(
+		"shrink-0",
+		"text-[12px]",
 		"font-semibold",
 		"text-[var(--font-color-secondary)]",
 	),

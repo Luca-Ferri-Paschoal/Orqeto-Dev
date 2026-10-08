@@ -1,12 +1,9 @@
+import { readProjectFile } from "./testSupport/source.mts"
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 async function read(path: string): Promise<string> {
-	return readFile(
-		path,
-		"utf8",
-	)
+	return readProjectFile(path)
 }
 
 void test("project tabs stay level and only capture wheel scrolling when the strip overflows", async () => {
@@ -18,7 +15,7 @@ void test("project tabs stay level and only capture wheel scrolling when the str
 
 	assert.match(
 		component,
-		/maximumScrollLeft <= 1/,
+		/maximum <= 1/,
 	)
 	assert.match(
 		component,

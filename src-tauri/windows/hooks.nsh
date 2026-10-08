@@ -4,6 +4,9 @@
   ${If} $UpdateMode <> 1
     DeleteRegKey HKCU "Software\Classes\Directory\shell\OrqetoDev"
     DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\OrqetoDev"
+    DeleteRegKey HKCU "Software\Classes\Folder\shell\OrqetoDev"
+    DeleteRegKey HKCU "Software\Classes\AllFilesystemObjects\shell\OrqetoDev"
+    DeleteRegKey HKCU "Software\Classes\*\shell\OrqetoDev"
     DeleteRegKey HKCU "Software\Orqeto\Orqeto Dev"
     RMDir /r "$TEMP\orqeto-dev"
   ${EndIf}

@@ -4,13 +4,18 @@ export const styles = {
 	container: cn(
 		"mt-3",
 		"flex",
+		"flex-col",
+		"border-t",
+		"border-[var(--border-color)]",
+		"pt-3",
+	),
+
+	topRow: cn(
+		"flex",
 		"min-h-9",
 		"items-center",
 		"justify-between",
 		"gap-2",
-		"border-t",
-		"border-[var(--border-color)]",
-		"pt-3",
 	),
 
 	metadata: cn(

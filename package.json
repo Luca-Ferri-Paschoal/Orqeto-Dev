@@ -3,6 +3,12 @@
 	"private": true,
 	"version": "2.0.0",
 	"type": "module",
+	"orqetoDev": {
+		"validation": {
+			"lintFix": "npm run lint:fix",
+			"test": "npm test"
+		}
+	},
 	"scripts": {
 		"dev": "npm run dev:stop && npm run version:check && npm run vscode:package && tauri dev",
 		"dev:stop": "tsx scripts/stop-running-dev.mts",
@@ -31,6 +37,7 @@
 		"typecheck:batch:vscode": "node scripts/typecheck-batch.mts --scope vscode",
 		"validate": "npm run typecheck && npm run format:check && npm run lint",
 		"validate:build": "npm run typecheck:app && npm run format:check && npm run lint",
+		"test": "npm run test:business:contracts && npm run test:adversarial:node && npm run test:business:rust",
 		"test:business:contracts": "node --experimental-strip-types scripts/business-rules/run.mts",
 		"test:business:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
 		"test:business": "npm run test:business:contracts && npm run test:business:rust",

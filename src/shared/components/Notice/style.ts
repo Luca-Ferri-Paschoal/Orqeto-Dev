@@ -29,9 +29,7 @@ const kindStyles: Record<NoticeKind, string> = {
 }
 
 export const styles = {
-	notice: ({
-		kind,
-	}: NoticeStyleParams) => cn(
+	notice: ({ kind }: NoticeStyleParams) => cn(
 		"rounded-md",
 		"border",
 		"px-3",
@@ -40,9 +38,23 @@ export const styles = {
 		"leading-4",
 		kindStyles[kind],
 	),
+	summary: cn(
+		"flex",
+		"flex-wrap",
+		"items-center",
+		"gap-2",
+	),
 	message: cn(
+		"min-w-0",
+		"flex-1",
 		"font-medium",
 		"leading-4",
+	),
+	action: cn(
+		"min-h-7",
+		"shrink-0",
+		"px-2.5",
+		"py-1",
 	),
 	details: cn(
 		"mt-2",

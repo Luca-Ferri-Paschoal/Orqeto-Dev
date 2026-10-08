@@ -1,12 +1,9 @@
+import { readProjectFile } from "./testSupport/source.mts"
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 async function read(path: string): Promise<string> {
-	return readFile(
-		path,
-		"utf8",
-	)
+	return readProjectFile(path)
 }
 
 void test(
@@ -15,7 +12,7 @@ void test(
 		const [formatter, workspace, types, rust, ptBR, en] = await Promise.all([
 			read("src/features/context/formatProjectDiagnosticContext.ts"),
 			read("src/features/context/useContextWorkspace.ts"),
-			read("src/features/context/types.ts"),
+			read("src/domain/contextContracts.ts"),
 			read("src-tauri/src/diagnostics.rs"),
 			read("src/infra/i18n/locales/pt-BR.ts"),
 			read("src/infra/i18n/locales/en.ts"),
@@ -146,7 +143,7 @@ void test(
 
 // BR-UI-002
 void test(
-	"routing and destination decision dialogs immediately suppress loading overlays",
+	"destination decision and Git preview dialogs immediately suppress loading overlays",
 	async () => {
 		const [app, pane, workspace] = await Promise.all([
 			read("src/App/index.tsx"),
@@ -156,7 +153,7 @@ void test(
 
 		assert.match(
 			app,
-			/routingDecisionPending=\{pendingProjectApplySelection !== null\}/,
+			/routingDecisionPending=\{false\}/,
 		)
 		assert.match(
 			pane,
