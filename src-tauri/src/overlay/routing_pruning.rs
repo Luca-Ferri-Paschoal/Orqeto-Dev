@@ -1,4 +1,5 @@
 fn prune_weak_candidates(
+	root: &Path,
 	candidates: Vec<CandidatePlan>,
 	manifest: &OverlayManifest,
 ) -> Vec<CandidatePlan> {
@@ -29,6 +30,7 @@ fn prune_weak_candidates(
 			if is_exact_root_candidate(candidate) {
 				if matches!(&manifest.kind, ManifestKind::Zip { .. }) {
 					return has_strong_zip_root_evidence(
+						root,
 						candidate,
 						manifest,
 					);

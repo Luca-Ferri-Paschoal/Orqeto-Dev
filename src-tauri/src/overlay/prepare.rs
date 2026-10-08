@@ -52,6 +52,7 @@ fn prepare_overlay_manifest(
 		.find(|candidate| is_exact_root_candidate(candidate))
 		.map(|candidate| candidate.candidate.clone());
 	let mut candidates = prune_weak_candidates(
+		root,
 		candidate_build.candidates,
 		manifest,
 	);
@@ -63,12 +64,14 @@ fn prepare_overlay_manifest(
 		// always validated, so majority exact-file coverage remains sufficient to
 		// resolve this project even when weaker relocation seeds were not all
 		// validated.
-		strong_exact_zip_root_match_index(
-			&candidates,
-			manifest,
-		)
+		strong_exact_zip_root_match_index(root, &candidates, manifest).filter(|index| {
+			// When discovery was truncated, do not treat one existing file
+			// as proof that no unseen relocation mapping exists.
+			!is_new_file_heavy_root_evidence(root, &candidates[*index], manifest)
+		})
 	} else {
 		recommended_candidate_index(
+			root,
 			&candidates,
 			manifest,
 		)

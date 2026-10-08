@@ -43,8 +43,10 @@ include!("overlay/manifest_zip.rs");
 include!("overlay/staging.rs");
 include!("overlay/routing_discovery.rs");
 include!("overlay/routing_scoring.rs");
+include!("overlay/routing_root_hierarchy.rs");
 include!("overlay/routing_pruning.rs");
 include!("overlay/routing_candidates.rs");
+include!("overlay/routing_recommendation.rs");
 include!("overlay/prepare.rs");
 include!("overlay/planning.rs");
 include!("overlay/fingerprint.rs");
@@ -79,4 +81,5 @@ mod tests {
 	include!("overlay/tests/part_11.rs");
 	include!("overlay/tests/part_12.rs");
     include!("overlay/tests/part_13.rs");
+    include!("overlay/tests/part_14.rs");
 }
