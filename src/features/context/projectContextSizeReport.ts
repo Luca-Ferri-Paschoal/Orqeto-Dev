@@ -16,10 +16,18 @@ export const MAX_CONTEXT_CONTENT_BYTES = 128 * 1024 * 1024
 export function buildDirectorySizeReport(files: readonly ContextSizeFile[]): DirectorySizeEntry[] {
 	const directories = new Map<string, DirectorySizeEntry>()
 	for (const file of files) {
-		const parts = file.relativePath.replaceAll(
+		// The native scanner returns project-relative paths prefixed with "./".
+		// Remove exactly this presentation prefix, not any traversal component.
+		const normalized = file.relativePath.replaceAll(
 			"\\",
 			"/",
-		).split("/")
+		)
+		const relativePath = normalized.startsWith("./") ?
+			normalized.slice(2) :
+			normalized
+		if (!isSafeIgnoreSuggestion(relativePath))
+			continue
+		const parts = relativePath.split("/")
 		if (parts.some(part => !part || part === "." || part === ".."))
 			continue
 		const byteCount = Number.isFinite(file.sizeBytes) && file.sizeBytes > 0 ?
@@ -49,6 +57,13 @@ export function buildDirectorySizeReport(files: readonly ContextSizeFile[]): Dir
 	}
 	return [...directories.values()].sort((left, right) =>
 		right.byteCount - left.byteCount || left.path.localeCompare(right.path))
+}
+
+/** Prefer the smallest existing branch that alone exceeds the content budget. */
+export function largestOverBudgetFolders(entries: readonly DirectorySizeEntry[]): DirectorySizeEntry[] {
+	const oversized = entries.filter(entry => entry.byteCount > MAX_CONTEXT_CONTENT_BYTES)
+	const oversizedParents = new Set(oversized.map(entry => entry.parentPath))
+	return oversized.filter(entry => !oversizedParents.has(entry.path))
 }
 
 export function childrenOfDirectory(

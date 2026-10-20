@@ -4,10 +4,16 @@ import { DevIgnoreDialog } from "../../DevIgnoreDialog"
 import { GitPatchPreviewDialog } from "../../GitPatchPreviewDialog"
 import { OverlayDestinationDialog } from "../../OverlayDestinationDialog"
 import { WorkspaceConfirmationDialog } from "../../WorkspaceConfirmationDialog"
+import { ContextSizeInspector } from "./ContextSizeInspector"
 import type { RefObject } from "react"
 
 interface WorkspaceOverlaysProps {
 	active: boolean
+	showContextSizeDialog: boolean
+	onIgnoreContextFolders: (
+		summary: NonNullable<ContextWorkspace["fullProjectContextSummary"]>,
+		paths: string[],
+	) => Promise<boolean>
 	workspace: ContextWorkspace
 	ignoreDialogOpen: boolean
 	isUpdatingProjectIgnore: boolean
@@ -21,6 +27,8 @@ interface WorkspaceOverlaysProps {
 
 export function WorkspaceOverlays({
 	active,
+	showContextSizeDialog,
+	onIgnoreContextFolders,
 	workspace,
 	ignoreDialogOpen,
 	isUpdatingProjectIgnore,
@@ -33,6 +41,16 @@ export function WorkspaceOverlays({
 }: WorkspaceOverlaysProps) {
 	return (
 		<>
+			{active && showContextSizeDialog && !ignoreDialogOpen && pendingConfirmation === null &&
+				workspace.pendingOverlay === null && workspace.pendingGitPatch === null && (
+					<ContextSizeInspector
+						summary={workspace.fullProjectContextSummary}
+						locale={workspace.locale}
+						pathsOnly={workspace.pathsOnly}
+						disabled={isUpdatingProjectIgnore}
+						onIgnore={onIgnoreContextFolders}
+					/>
+				)}
 			{active && ignoreDialogOpen && workspace.rootFolder !== null && (
 				<DevIgnoreDialog
 					addElementRef={ignoreAddRef}

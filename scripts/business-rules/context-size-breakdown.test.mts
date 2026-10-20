@@ -2,6 +2,7 @@ import {
 	buildDirectorySizeReport,
 	childrenOfDirectory,
 	isSafeIgnoreSuggestion,
+	largestOverBudgetFolders,
 	MAX_CONTEXT_CONTENT_BYTES,
 } from "../../src/features/context/projectContextSizeReport.ts"
 import { strict as assert } from "node:assert"
@@ -97,4 +98,54 @@ void test("Invalid discovery path is not eligible as an ignore suggestion", () =
 		report[0]?.path,
 		"legitimate",
 	)
+})
+
+void test("Native ./ paths produce directory diagnostics for a 3.4 GB project", () => {
+	const report = buildDirectorySizeReport([
+		{ relativePath: "./node_modules/pkg/index.js", sizeBytes: 2_500_000_000 },
+		{ relativePath: ".\\venv\\lib\\code.py", sizeBytes: 800_000_000 },
+		{ relativePath: "./src/main.ts", sizeBytes: 1024 },
+	])
+	assert.equal(
+		report.find(dir => dir.path === "node_modules")?.byteCount,
+		2_500_000_000,
+	)
+	assert.equal(
+		report.find(dir => dir.path === "venv")?.byteCount,
+		800_000_000,
+	)
+	assert.deepEqual(
+		childrenOfDirectory(
+			report,
+			"",
+		).map(dir => dir.path),
+		["node_modules", "venv", "src"],
+	)
+})
+
+void test("Traversal and absolute discovery paths never become ignore suggestions", () => {
+	const report = buildDirectorySizeReport([
+		{ relativePath: "./../private.txt", sizeBytes: 99_999 },
+		{ relativePath: "/outside/folder/file.ts", sizeBytes: 99_999 },
+		{ relativePath: "C:\\Windows\\System32\\file.dll", sizeBytes: 99_999 },
+		{ relativePath: "./vendor/pkg/file.ts", sizeBytes: 10 },
+	])
+	assert.deepEqual(
+		report.map(dir => dir.path),
+		["vendor", "vendor/pkg"],
+	)
+})
+
+void test("Oversized nested dependency folders are suggested directly, without root-level navigation", () => {
+	const mib = 1024 * 1024
+	const report = buildDirectorySizeReport([
+		{ relativePath: "./apps/api/node_modules/a/file.js", sizeBytes: 700 * mib },
+		{ relativePath: "./apps/api/src/main.ts", sizeBytes: 10 * mib },
+		{ relativePath: "./packages/vendor/dependency.bin", sizeBytes: 220 * mib },
+		{ relativePath: "./README.md", sizeBytes: 10 },
+	])
+	assert.deepEqual(largestOverBudgetFolders(report).map(entry => entry.path), [
+		"apps/api/node_modules/a",
+		"packages/vendor",
+	])
 })

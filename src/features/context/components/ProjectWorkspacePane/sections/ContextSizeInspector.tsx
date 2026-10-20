@@ -1,13 +1,18 @@
 import { formatByteSize } from "../../../formatGeneratedContent"
 import {
 	childrenOfDirectory,
+	largestOverBudgetFolders,
 	MAX_CONTEXT_CONTENT_BYTES,
 } from "../../../projectContextSizeReport"
 import type { FullProjectContextSummary } from "../../../types"
-import type { Locale } from "@/infra/i18n"
-import { translate } from "@/infra/i18n"
+import { ContextSizeRow } from "./ContextSizeRow"
 import {
-	useMemo,
+	type Locale,
+	translate,
+} from "@/infra/i18n"
+import { Dialog } from "@/shared/components/Dialog"
+import {
+	useId,
 	useState,
 } from "react"
 
@@ -16,105 +21,268 @@ interface Props {
 	locale: Locale
 	pathsOnly: boolean
 	disabled: boolean
-	onIgnore: (relativePath: string) => void
+	onIgnore: (
+		summary: FullProjectContextSummary,
+		paths: string[],
+	) => Promise<boolean>
 }
 
-export function ContextSizeInspector({ summary, locale, pathsOnly, disabled, onIgnore }: Props) {
+/** A scan opens this modal. Ignore rules are changed only by explicit confirmation. */
+export function ContextSizeInspector({
+	summary,
+	locale,
+	pathsOnly,
+	disabled,
+	onIgnore,
+}: Props) {
+	const titleId = useId()
+	const [dismissedSummary, setDismissedSummary] = useState<FullProjectContextSummary | null>(null)
+	const [selection, setSelection] = useState<{ summary: FullProjectContextSummary | null; paths: string[] }>({ summary: null, paths: [] })
 	const [openedPath, setOpenedPath] = useState("")
-	const directories = summary?.directories
-	const path = openedPath && directories?.some(dir => dir.path === openedPath) ?
-		openedPath :
+	const [openedForSummary, setOpenedForSummary] = useState<FullProjectContextSummary | null>(null)
+	const [isSaving, setIsSaving] = useState(false)
+	const [errorState, setErrorState] = useState<{ summary: FullProjectContextSummary | null; message: string }>({ summary: null, message: "" })
+	const [showAll, setShowAll] = useState(false)
+	const [showDirectoryTree, setShowDirectoryTree] = useState(false)
+	const selectedPaths = selection.summary === summary ?
+		selection.paths :
+		[]
+	const errorMessage = errorState.summary === summary ?
+		errorState.message :
 		""
-	const children = useMemo(
-		() => childrenOfDirectory(
-			directories ?? [],
-			path,
-		),
-		[directories, path],
-	)
-	if (summary === null || pathsOnly || summary.byteCount <= MAX_CONTEXT_CONTENT_BYTES)
+
+	if (summary === null || pathsOnly || summary.byteCount <= MAX_CONTEXT_CONTENT_BYTES || summary === dismissedSummary)
 		return null
 
+	const directories = summary.directories
+	const path = openedForSummary === summary && directories.some(dir => dir.path === openedPath) ?
+		openedPath :
+		""
+	const suggestions = largestOverBudgetFolders(directories)
+	const children = !path && !(openedForSummary === summary && showDirectoryTree) && suggestions.length > 0 ?
+		suggestions :
+		childrenOfDirectory(
+			directories,
+			path,
+		)
+	const visibleChildren = openedForSummary === summary && showAll ?
+		children :
+		children.slice(
+			0,
+			15,
+		)
 	const parentPath = path.includes("/") ?
 		path.slice(
 			0,
 			path.lastIndexOf("/"),
 		) :
 		""
+	const validSelections = selectedPaths.filter(selected => directories.some(dir => dir.path === selected))
+	const selectedBytes = validSelections.reduce((sum, selected) =>
+		sum + (directories.find(dir => dir.path === selected)?.byteCount ?? 0), 0)
+	const remainingBytes = Math.max(
+		0,
+		summary.byteCount - selectedBytes,
+	)
+
+	function togglePath(selected: string): void {
+		setSelection(previous => {
+			const paths = previous.summary === summary ?
+				previous.paths :
+				[]
+			return {
+				summary,
+				paths: paths.includes(selected) ?
+					paths.filter(item => item !== selected) :
+					[...paths.filter(item => !item.startsWith(`${selected}/`) && !selected.startsWith(`${item}/`)), selected],
+			}
+		})
+	}
+
+	function navigate(to: string): void {
+		setOpenedForSummary(summary)
+		setOpenedPath(to)
+		setShowAll(false)
+	}
+
+	async function confirm(): Promise<void> {
+		if (summary === null || isSaving || disabled || validSelections.length === 0)
+			return
+		setErrorState({ summary, message: "" })
+		setIsSaving(true)
+		try {
+			const applied = await onIgnore(
+				summary,
+				validSelections,
+			)
+			if (applied) {
+				setDismissedSummary(summary)
+				setSelection({ summary: null, paths: [] })
+				setOpenedPath("")
+			}
+		} catch (error) {
+			setErrorState({
+				summary,
+				message: error instanceof Error ?
+					error.message :
+					String(error),
+			})
+		} finally {
+			setIsSaving(false)
+		}
+	}
+
 	return (
-		<section className="mt-3 space-y-2 rounded-lg border border-[var(--border-color-strong)] p-3" aria-label={translate(
-			locale,
-			"folder.projectContext.sizeTitle",
-		)}>
-			<div className="text-sm font-semibold">{translate(
-				locale,
-				"folder.projectContext.sizeTitle",
-			)}</div>
-			<p className="text-xs text-[var(--font-color-secondary)]">
+		<Dialog
+			backdropClassName="fixed inset-0 z-[110] flex items-center justify-center bg-[var(--overlay-background)] p-4"
+			dialogClassName="w-full max-w-[34rem] rounded-xl border border-[var(--border-color)] bg-[var(--background-2)] p-4 shadow-2xl"
+			labelledBy={titleId}
+			disabled={isSaving || disabled}
+			onCancel={() => setDismissedSummary(summary)}
+		>
+			<h2
+				id={titleId}
+				className="text-base font-bold"
+			>
+				{translate(
+					locale,
+					"folder.projectContext.sizeTitle",
+				)}
+			</h2>
+			<p className="mt-2 text-sm text-[var(--font-color-secondary)]">
 				{translate(
 					locale,
 					"folder.projectContext.sizeWarning",
 					{ size: formatByteSize(summary.byteCount) },
 				)}
 			</p>
-			{path && (
-				<div className="flex items-center gap-2 text-xs">
-					<button type="button" className="underline" onClick={() => setOpenedPath(parentPath)}>{translate(
+			<p className="mt-2 text-xs text-[var(--font-color-secondary)]">
+				{translate(
+					locale,
+					"folder.projectContext.sizeDialogHint",
+				)}
+			</p>
+			<div className="mt-3 flex items-center justify-between gap-2 text-xs">
+				<span className="min-w-0 break-all font-semibold">
+					{path ?
+						`${path}/` :
+						"./"}
+				</span>
+				{path && (
+					<button
+						type="button"
+						className="shrink-0 underline"
+						disabled={isSaving}
+						onClick={() => navigate(parentPath)}
+					>
+						{translate(
+							locale,
+							"folder.projectContext.sizeBack",
+						)}
+					</button>
+				)}
+			</div>
+			{!path && suggestions.length > 0 && (
+				<button
+					type="button"
+					className="mt-2 text-xs underline"
+					disabled={isSaving}
+					onClick={() => {
+						setOpenedForSummary(summary)
+						setShowDirectoryTree(previous => !previous)
+						setShowAll(false)
+					}}
+				>
+					{translate(
 						locale,
-						"folder.projectContext.sizeBack",
-					)}</button>
-					<span className="min-w-0 flex-1 break-all font-semibold">{path}/</span>
-					<button type="button" className="shrink-0 rounded border border-[var(--border-color-strong)] px-2 py-1" disabled={disabled} onClick={() => onIgnore(path)}>{translate(
-						locale,
-						"folder.projectContext.sizeIgnore",
-					)}</button>
-				</div>
+						openedForSummary === summary && showDirectoryTree ?
+							"folder.projectContext.sizeSuggestions" :
+							"folder.projectContext.sizeAllFolders",
+					)}
+				</button>
 			)}
-			<ul className="max-h-64 space-y-2 overflow-auto">
-				{children.slice(
-					0,
-					12,
-				).map(child => (
-					<li key={child.path} className="rounded-md border border-[var(--border-color)] p-2">
-						<div className="flex min-w-0 items-start justify-between gap-2">
-							<button type="button" className="min-w-0 break-all text-left text-xs font-semibold underline" onClick={() => setOpenedPath(child.path)}>
-								{child.path.slice(path ?
-									path.length + 1 :
-									0)}/
-							</button>
-							<span className="shrink-0 text-xs tabular-nums">{formatByteSize(child.byteCount)}</span>
-						</div>
-						<div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-							<span className="text-xs text-[var(--font-color-secondary)]">
-								{translate(
-									locale,
-									"folder.projectContext.sizeLabel",
-									{ files: child.fileCount, size: formatByteSize(child.byteCount) },
-								)}
-							</span>
-							<button type="button" className="rounded border border-[var(--border-color-strong)] px-2 py-1 text-xs hover:bg-[var(--background-3)] disabled:opacity-50" disabled={disabled} onClick={() => onIgnore(child.path)}>
-								{translate(
-									locale,
-									"folder.projectContext.sizeIgnore",
-								)}
-							</button>
-						</div>
-					</li>
+			<ul
+				className="mt-2 max-h-[45vh] space-y-1 overflow-auto"
+				aria-label={translate(
+					locale,
+					"folder.projectContext.sizeTitle",
+				)}
+			>
+				{visibleChildren.map(child => (
+					<ContextSizeRow
+						key={child.path}
+						entry={child}
+						parentPath={path}
+						checked={validSelections.includes(child.path)}
+						coveredByParent={validSelections.some(selected => child.path.startsWith(`${selected}/`))}
+						disabled={disabled || isSaving}
+						locale={locale}
+						onSelect={togglePath}
+						onNavigate={navigate}
+					/>
 				))}
 			</ul>
-			{children.length === 0 && <p className="text-xs text-[var(--font-color-secondary)]">{translate(
-				locale,
-				"folder.projectContext.noSubfolders",
-			)}</p>}
-			{children.length > 12 && <p className="text-xs text-[var(--font-color-secondary)]">{translate(
-				locale,
-				"folder.projectContext.showTop",
-				{ count: children.length },
-			)}</p>}
-			<p className="text-xs text-[var(--font-color-secondary)]">{translate(
-				locale,
-				"folder.projectContext.sizeRescan",
-			)}</p>
-		</section>
+			{children.length > visibleChildren.length && (
+				<button
+					type="button"
+					className="mt-2 text-xs underline"
+					onClick={() => setShowAll(true)}
+				>
+					{translate(
+						locale,
+						"folder.projectContext.sizeShowAll",
+						{ count: children.length - visibleChildren.length },
+					)}
+				</button>
+			)}
+			{children.length === 0 && (
+				<p className="mt-2 text-xs text-[var(--font-color-secondary)]">
+					{translate(
+						locale,
+						"folder.projectContext.sizeNoFolders",
+					)}
+				</p>
+			)}
+			<p className="mt-3 text-xs text-[var(--font-color-secondary)]">
+				{translate(
+					locale,
+					"folder.projectContext.sizeProjected",
+					{ size: formatByteSize(remainingBytes) },
+				)}
+			</p>
+			{errorMessage && (
+				<p
+					role="alert"
+					className="mt-2 text-xs text-[var(--danger-font-color)]"
+				>
+					{errorMessage}
+				</p>
+			)}
+			<div className="mt-3 flex justify-end gap-2">
+				<button
+					type="button"
+					className="rounded-md border border-[var(--border-color)] px-3 py-2 text-sm"
+					disabled={isSaving}
+					onClick={() => setDismissedSummary(summary)}
+				>
+					{translate(
+						locale,
+						"folder.projectContext.sizeCancel",
+					)}
+				</button>
+				<button
+					type="button"
+					className="rounded-md bg-[var(--button-color)] px-3 py-2 text-sm font-semibold text-[var(--button-font-color)] disabled:opacity-50"
+					disabled={disabled || isSaving || validSelections.length === 0}
+					onClick={() => void confirm()}
+				>
+					{translate(
+						locale,
+						"folder.projectContext.sizeIgnoreSelected",
+						{ count: validSelections.length },
+					)}
+				</button>
+			</div>
+		</Dialog>
 	)
 }

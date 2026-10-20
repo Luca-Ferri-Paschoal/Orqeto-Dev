@@ -1,5 +1,5 @@
+import type { FullProjectContextSummary } from "../../types"
 import { ApplyDropZone } from "../ApplyDropZone"
-import { useConfirmLargeFolderIgnore } from "./hooks/useConfirmLargeFolderIgnore"
 import { useNativeWorkspaceDrop } from "./hooks/useNativeWorkspaceDrop"
 import { useProjectIgnoreController } from "./hooks/useProjectIgnoreController"
 import { useProjectWorkspaceMode } from "./hooks/useProjectWorkspaceMode"
@@ -149,11 +149,19 @@ export function ProjectWorkspacePane(props: ProjectWorkspacePaneProps) {
 		},
 		setRequestedContextMode,
 	)
-	const onIgnoreLargeFolder = useConfirmLargeFolderIgnore(
-		workspaceRef,
-		confirmation.requestConfirmation,
-		ignoreScannedFolder,
-	)
+	const onIgnoreContextFolders = useCallback(async (
+		summary: FullProjectContextSummary,
+		paths: string[],
+	): Promise<boolean> => {
+		const current = workspaceRef.current
+		return current.rootFolder !== null && current.fullProjectContextSummary === summary ?
+			ignoreScannedFolder(
+				current.rootFolder,
+				summary,
+				paths,
+			) :
+			false
+	}, [ignoreScannedFolder, workspaceRef])
 
 	const interactionDisabled = interaction.isInteractionBusy || routingBusy || interactionBlocked
 	const suppressLoadingOverlay = routingDecisionPending ||
@@ -211,7 +219,6 @@ export function ProjectWorkspacePane(props: ProjectWorkspacePaneProps) {
 					onContextModeChange={actions.changeMode}
 					onProjectScopeChange={setRequestedContextMode}
 					onDevIgnore={() => void handleDevIgnore()}
-					onIgnoreLargeFolder={path => void onIgnoreLargeFolder(path)}
 					onGenerate={actions.generate}
 					onGenerateDiagnostic={actions.generateDiagnostic}
 					onLintFix={actions.runLintFix}
@@ -241,6 +248,8 @@ export function ProjectWorkspacePane(props: ProjectWorkspacePaneProps) {
 			</div>
 			<WorkspaceOverlays
 				active={active}
+				showContextSizeDialog={contextMode === "project"}
+				onIgnoreContextFolders={onIgnoreContextFolders}
 				workspace={workspace}
 				ignoreDialogOpen={ignoreDialogOpen}
 				isUpdatingProjectIgnore={isUpdatingProjectIgnore}

@@ -4,7 +4,6 @@ import { ContentSummary } from "../../ContentSummary"
 import { ContextExportActions } from "../../ContextExportActions"
 import { DropZone } from "../../DropZone"
 import { styles } from "../style"
-import { ContextSizeInspector } from "./ContextSizeInspector"
 import { translate } from "@/infra/i18n"
 import type { RefObject } from "react"
 
@@ -28,7 +27,6 @@ interface ProjectModeContentProps {
 	onGenerate: () => void
 	onCopy: () => void
 	onDownload: () => void
-	onIgnoreLargeFolder: (relativePath: string) => void
 }
 
 export function ProjectModeContent({
@@ -51,7 +49,6 @@ export function ProjectModeContent({
 	onGenerate,
 	onCopy,
 	onDownload,
-	onIgnoreLargeFolder,
 }: ProjectModeContentProps) {
 	return (
 		<div className={styles.modeDetails}>
@@ -148,15 +145,7 @@ export function ProjectModeContent({
 					onCopy={onCopy}
 					onDownload={onDownload}
 				/>}
-			{contextMode === "project" && (
-				<ContextSizeInspector
-					summary={workspace.fullProjectContextSummary}
-					locale={workspace.locale}
-					pathsOnly={workspace.pathsOnly}
-					disabled={interactionDisabled}
-					onIgnore={onIgnoreLargeFolder}
-				/>
-			)}
+
 		</div>
 	)
 }

@@ -1,6 +1,10 @@
 import { projectIgnoreOutcomeFromResult } from "../../../operationOutcome"
 import { createOperationOutcomeNotice } from "../../../operationOutcomeNotice"
-import { isSafeIgnoreSuggestion } from "../../../projectContextSizeReport"
+import {
+	isSafeIgnoreSuggestion,
+	MAX_CONTEXT_CONTENT_BYTES,
+} from "../../../projectContextSizeReport"
+import type { FullProjectContextSummary } from "../../../types"
 import type { ContextWorkspace } from "../../../useContextWorkspace"
 import { getErrorMessage } from "../../../utils"
 import {
@@ -22,34 +26,51 @@ interface Options {
 	updateQueueRef: MutableRefObject<Promise<void>>
 }
 
-/** Reuses the Dev Ignore queue so a scan shortcut cannot race dialog updates. */
+/** One serialized Dev Ignore update for the folders selected in the scan dialog. */
 export function useIgnoreScannedFolder({
 	workspaceRef,
 	setFileExists,
 	setOperationPending,
 	updateQueueRef,
 }: Options) {
-	return useCallback(async (rootAtScan: string, relativePath: string): Promise<void> => {
-		if (!isSafeIgnoreSuggestion(relativePath) || workspaceRef.current.rootFolder !== rootAtScan)
-			return
+	return useCallback(async (
+		rootAtScan: string,
+		summaryAtScan: FullProjectContextSummary,
+		relativePaths: string[],
+	): Promise<boolean> => {
+		const current = workspaceRef.current
+		if (current.rootFolder !== rootAtScan ||
+			current.fullProjectContextSummary !== summaryAtScan ||
+			summaryAtScan.byteCount <= MAX_CONTEXT_CONTENT_BYTES)
+			return false
+		const knownPaths = new Set(summaryAtScan.directories.map(dir => dir.path))
+		const paths = [...new Set(relativePaths)]
+		if (paths.length === 0 || paths.some(path => !isSafeIgnoreSuggestion(path) || !knownPaths.has(path)))
+			return false
+		// Parent directories supersede selected descendants.
+		const distinctPaths = paths.filter(path => !paths.some(parent => parent !== path && path.startsWith(`${parent}/`)))
 		setOperationPending(true)
-		let didUpdate = false
+		let updated = false
 		const operation = updateQueueRef.current.catch(() => undefined).then(async () => {
-			if (workspaceRef.current.rootFolder !== rootAtScan)
+			if (workspaceRef.current.rootFolder !== rootAtScan ||
+				workspaceRef.current.fullProjectContextSummary !== summaryAtScan)
 				return
-			const absolutePath = await join(
-				rootAtScan,
-				...relativePath.split("/"),
-			)
-			if (workspaceRef.current.rootFolder !== rootAtScan)
+			const absolutePaths = await Promise.all(distinctPaths.map(path =>
+				join(
+					rootAtScan,
+					...path.split("/"),
+				)))
+			if (workspaceRef.current.rootFolder !== rootAtScan ||
+				workspaceRef.current.fullProjectContextSummary !== summaryAtScan)
 				return
 			if (!await projectIgnoreExists(rootAtScan))
 				await createProjectIgnore(rootAtScan)
-			if (workspaceRef.current.rootFolder !== rootAtScan)
+			if (workspaceRef.current.rootFolder !== rootAtScan ||
+				workspaceRef.current.fullProjectContextSummary !== summaryAtScan)
 				return
 			const result = await updateProjectIgnore(
 				rootAtScan,
-				[absolutePath],
+				absolutePaths,
 				true,
 			)
 			setFileExists(
@@ -59,7 +80,7 @@ export function useIgnoreScannedFolder({
 			if (workspaceRef.current.rootFolder !== rootAtScan)
 				return
 			workspaceRef.current.invalidateFullProjectContextScan()
-			didUpdate = true
+			updated = true
 			workspaceRef.current.publishNotice(createOperationOutcomeNotice(
 				workspaceRef.current.locale,
 				projectIgnoreOutcomeFromResult(
@@ -74,17 +95,21 @@ export function useIgnoreScannedFolder({
 		try {
 			await operation
 		} catch (error) {
-			workspaceRef.current.publishNotice({
-				kind: "error",
-				message: getErrorMessage(
-					error,
-					workspaceRef.current.locale,
-				),
-			})
+			if (workspaceRef.current.rootFolder === rootAtScan) {
+				workspaceRef.current.publishNotice({
+					kind: "error",
+					message: getErrorMessage(
+						error,
+						workspaceRef.current.locale,
+					),
+				})
+			}
+			throw error
 		} finally {
 			setOperationPending(false)
 		}
-		if (didUpdate && workspaceRef.current.rootFolder === rootAtScan)
+		if (updated && workspaceRef.current.rootFolder === rootAtScan)
 			await workspaceRef.current.refreshFullProjectContextSummary()
+		return updated
 	}, [setFileExists, setOperationPending, updateQueueRef, workspaceRef])
 }
