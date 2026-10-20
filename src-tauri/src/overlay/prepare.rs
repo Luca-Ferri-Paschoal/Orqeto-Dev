@@ -51,13 +51,20 @@ fn prepare_overlay_manifest(
 		.iter()
 		.find(|candidate| is_exact_root_candidate(candidate))
 		.map(|candidate| candidate.candidate.clone());
+	let single_root_certified = candidate_build.single_file_root_hierarchy == Some(true);
+	let single_root_conflicted = candidate_build.single_file_root_hierarchy == Some(false);
 	let mut candidates = prune_weak_candidates(
 		root,
 		candidate_build.candidates,
 		manifest,
+		single_root_certified,
 	);
 
-	let mut recommended = if candidate_build.validation_limit_exceeded {
+	let mut recommended = if single_root_conflicted {
+		None
+	} else if single_root_certified {
+		candidates.iter().position(is_exact_root_candidate)
+	} else if candidate_build.validation_limit_exceeded {
 		// Candidate discovery may overflow because a project contains many
 		// repeated generic directory names. That overflow must not hide an
 		// independently proven strong exact ROOT mapping. The exact ROOT seed is

@@ -45,6 +45,7 @@ include!("overlay/routing_discovery.rs");
 include!("overlay/routing_scoring.rs");
 include!("overlay/routing_root_hierarchy.rs");
 include!("overlay/routing_pruning.rs");
+include!("overlay/routing_single_zip_root.rs");
 include!("overlay/routing_candidates.rs");
 include!("overlay/routing_recommendation.rs");
 include!("overlay/prepare.rs");
@@ -83,4 +84,5 @@ mod tests {
     include!("overlay/tests/part_13.rs");
     include!("overlay/tests/part_14.rs");
     include!("overlay/tests/part_15.rs");
+    include!("overlay/tests/part_16.rs");
 }

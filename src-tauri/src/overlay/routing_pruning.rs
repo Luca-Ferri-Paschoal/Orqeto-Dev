@@ -2,6 +2,7 @@ fn prune_weak_candidates(
 	root: &Path,
 	candidates: Vec<CandidatePlan>,
 	manifest: &OverlayManifest,
+	uniquely_anchored_single_root: bool,
 ) -> Vec<CandidatePlan> {
 	let strongest_context = candidates
 		.iter()
@@ -29,7 +30,7 @@ fn prune_weak_candidates(
 		.filter(|candidate| {
 			if is_exact_root_candidate(candidate) {
 				if matches!(&manifest.kind, ManifestKind::Zip { .. }) {
-					return has_strong_zip_root_evidence(
+					return uniquely_anchored_single_root || has_strong_zip_root_evidence(
 						root,
 						candidate,
 						manifest,
@@ -79,6 +80,7 @@ struct CandidateBuildResult {
 	candidates: Vec<CandidatePlan>,
 	discovered_seed_count: usize,
 	validation_limit_exceeded: bool,
+	single_file_root_hierarchy: Option<bool>,
 }
 
 fn deduplicate_candidate_seeds(seeds: Vec<CandidateSeed>) -> Vec<CandidateSeed> {

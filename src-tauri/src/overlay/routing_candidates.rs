@@ -14,6 +14,12 @@ fn build_candidates(
 		target_file_name,
 		&project_ignore,
 	)?;
+	let single_file_root_hierarchy = deep_single_zip_root_hierarchy_evidence(
+		root,
+		manifest,
+		&project_ignore,
+		&discovery,
+	);
 	let project_matches = &discovery.directory_matches;
 	let mut seeds = Vec::new();
 	seeds.push(CandidateSeed {
@@ -224,6 +230,7 @@ fn build_candidates(
 		candidates: deduplicate_candidates(candidates),
 		discovered_seed_count,
 		validation_limit_exceeded,
+		single_file_root_hierarchy,
 	})
 }
 

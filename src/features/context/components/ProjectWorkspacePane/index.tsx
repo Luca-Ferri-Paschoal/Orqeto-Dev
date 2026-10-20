@@ -1,4 +1,5 @@
 import { ApplyDropZone } from "../ApplyDropZone"
+import { useConfirmLargeFolderIgnore } from "./hooks/useConfirmLargeFolderIgnore"
 import { useNativeWorkspaceDrop } from "./hooks/useNativeWorkspaceDrop"
 import { useProjectIgnoreController } from "./hooks/useProjectIgnoreController"
 import { useProjectWorkspaceMode } from "./hooks/useProjectWorkspaceMode"
@@ -70,6 +71,7 @@ export function ProjectWorkspacePane(props: ProjectWorkspacePaneProps) {
 		dialogOpenRef: ignoreDialogOpenRef,
 		fileExists: projectIgnoreFileExists,
 		handleDevIgnore,
+		ignoreScannedFolder,
 		isUpdating: isUpdatingProjectIgnore,
 		isUpdatingRef: isUpdatingProjectIgnoreRef,
 		removeDropZoneRef: ignoreRemoveDropZoneRef,
@@ -147,6 +149,12 @@ export function ProjectWorkspacePane(props: ProjectWorkspacePaneProps) {
 		},
 		setRequestedContextMode,
 	)
+	const onIgnoreLargeFolder = useConfirmLargeFolderIgnore(
+		workspaceRef,
+		confirmation.requestConfirmation,
+		ignoreScannedFolder,
+	)
+
 	const interactionDisabled = interaction.isInteractionBusy || routingBusy || interactionBlocked
 	const suppressLoadingOverlay = routingDecisionPending ||
 		confirmation.pendingConfirmation !== null ||
@@ -203,6 +211,7 @@ export function ProjectWorkspacePane(props: ProjectWorkspacePaneProps) {
 					onContextModeChange={actions.changeMode}
 					onProjectScopeChange={setRequestedContextMode}
 					onDevIgnore={() => void handleDevIgnore()}
+					onIgnoreLargeFolder={path => void onIgnoreLargeFolder(path)}
 					onGenerate={actions.generate}
 					onGenerateDiagnostic={actions.generateDiagnostic}
 					onLintFix={actions.runLintFix}

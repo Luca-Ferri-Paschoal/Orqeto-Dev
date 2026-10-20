@@ -45,6 +45,7 @@ interface WorkspaceFolderSectionProps {
 	onContextModeChange: (mode: ContextSectionMode) => void
 	onProjectScopeChange: (mode: ContextMode) => void
 	onDevIgnore: () => void
+	onIgnoreLargeFolder: (relativePath: string) => void
 	onGenerate: () => void
 	onGenerateDiagnostic: (mode: "typecheck" | "eslint") => void
 	onLintFix: () => void
@@ -83,6 +84,7 @@ export function WorkspaceFolderSection({
 	onContextModeChange,
 	onProjectScopeChange,
 	onDevIgnore,
+	onIgnoreLargeFolder,
 	onGenerate,
 	onGenerateDiagnostic,
 	onLintFix,
@@ -151,6 +153,7 @@ export function WorkspaceFolderSection({
 						onGenerate={onGenerate}
 						onCopy={onCopy}
 						onDownload={onDownload}
+						onIgnoreLargeFolder={onIgnoreLargeFolder}
 					/>
 				)}
 				{workspace.rootFolder !== null && contextMode === "commit" && (

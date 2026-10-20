@@ -2,6 +2,7 @@ import { projectIgnoreOutcomeFromResult } from "../../../operationOutcome"
 import { createOperationOutcomeNotice } from "../../../operationOutcomeNotice"
 import type { ContextWorkspace } from "../../../useContextWorkspace"
 import { getErrorMessage } from "../../../utils"
+import { useIgnoreScannedFolder } from "./useIgnoreScannedFolder"
 import {
 	createProjectIgnore,
 	projectIgnoreExists,
@@ -73,7 +74,6 @@ export function useProjectIgnoreController({
 		isUpdatingRef.current = next
 		setIsUpdating(next)
 	}, [])
-
 	useEffect(() => {
 		dialogOpenRef.current = ignoreDialogOpen
 	}, [ignoreDialogOpen])
@@ -122,7 +122,6 @@ export function useProjectIgnoreController({
 			cancelled = true
 		}
 	}, [rootFolder, setFileExists, workspaceRef])
-
 	const updateIgnorePaths = useCallback(async (
 		paths: string[],
 		ignorePaths: boolean,
@@ -200,6 +199,13 @@ export function useProjectIgnoreController({
 		updateIgnorePathsRef.current = updateIgnorePaths
 	}, [updateIgnorePaths])
 
+	const ignoreScannedFolder = useIgnoreScannedFolder({
+		workspaceRef,
+		setFileExists,
+		setOperationPending,
+		updateQueueRef,
+	})
+
 	const handleDevIgnore = useCallback(async (): Promise<void> => {
 		const rootFolder = workspaceRef.current.rootFolder
 		if (rootFolder === null || fileExists === null)
@@ -246,6 +252,7 @@ export function useProjectIgnoreController({
 		dialogOpenRef,
 		fileExists,
 		handleDevIgnore,
+		ignoreScannedFolder,
 		isUpdating,
 		isUpdatingRef,
 		removeDropZoneRef,
