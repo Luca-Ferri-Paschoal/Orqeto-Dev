@@ -52,17 +52,20 @@ fn prepare_overlay_manifest(
 		.find(|candidate| is_exact_root_candidate(candidate))
 		.map(|candidate| candidate.candidate.clone());
 	let single_root_certified = candidate_build.single_file_root_hierarchy == Some(true);
-	let single_root_conflicted = candidate_build.single_file_root_hierarchy == Some(false);
+	let multi_root_certified = candidate_build.multi_file_root_hierarchy == Some(true);
+	let rooted_by_hierarchy = single_root_certified || multi_root_certified;
+	let root_hierarchy_conflicted = candidate_build.single_file_root_hierarchy == Some(false) ||
+		candidate_build.multi_file_root_hierarchy == Some(false);
 	let mut candidates = prune_weak_candidates(
 		root,
 		candidate_build.candidates,
 		manifest,
-		single_root_certified,
+		rooted_by_hierarchy,
 	);
 
-	let mut recommended = if single_root_conflicted {
+	let mut recommended = if root_hierarchy_conflicted {
 		None
-	} else if single_root_certified {
+	} else if rooted_by_hierarchy {
 		candidates.iter().position(is_exact_root_candidate)
 	} else if candidate_build.validation_limit_exceeded {
 		// Candidate discovery may overflow because a project contains many

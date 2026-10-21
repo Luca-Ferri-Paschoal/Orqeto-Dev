@@ -20,6 +20,12 @@ fn build_candidates(
 		&project_ignore,
 		&discovery,
 	);
+	let multi_file_root_hierarchy = coherent_new_zip_subtree_root_evidence(
+		root,
+		manifest,
+		&project_ignore,
+		&discovery,
+	);
 	let project_matches = &discovery.directory_matches;
 	let mut seeds = Vec::new();
 	seeds.push(CandidateSeed {
@@ -231,6 +237,7 @@ fn build_candidates(
 		discovered_seed_count,
 		validation_limit_exceeded,
 		single_file_root_hierarchy,
+		multi_file_root_hierarchy,
 	})
 }
 

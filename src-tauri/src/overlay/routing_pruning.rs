@@ -81,6 +81,7 @@ struct CandidateBuildResult {
 	discovered_seed_count: usize,
 	validation_limit_exceeded: bool,
 	single_file_root_hierarchy: Option<bool>,
+	multi_file_root_hierarchy: Option<bool>,
 }
 
 fn deduplicate_candidate_seeds(seeds: Vec<CandidateSeed>) -> Vec<CandidateSeed> {
