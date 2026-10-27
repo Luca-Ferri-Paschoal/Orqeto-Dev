@@ -1,5 +1,8 @@
 import type { OperationOutcome } from "./operationOutcome"
-import type { DirectorySizeEntry } from "./projectContextSizeReport"
+import type {
+	ContextSizeFile,
+	DirectorySizeEntry,
+} from "./projectContextSizeReport"
 import type {
 	GitPatchPreview,
 	OverlayDestinationCandidate,
@@ -14,6 +17,7 @@ export interface FullProjectContextSummary {
 	fileCount: number
 	byteCount: number
 	directories: DirectorySizeEntry[]
+	largestFiles?: ContextSizeFile[]
 }
 
 export interface PendingGitPatch extends GitPatchPreview {

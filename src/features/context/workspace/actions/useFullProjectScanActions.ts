@@ -1,7 +1,10 @@
 import type { ContextFilter } from "../../contextPathFilter"
 import { filterContextFiles } from "../../contextPathFilter"
 import { formatGeneratedContent } from "../../formatGeneratedContent"
-import { buildDirectorySizeReport } from "../../projectContextSizeReport"
+import {
+	buildDirectorySizeReport,
+	largestScannedFiles,
+} from "../../projectContextSizeReport"
 import type { ProcessDropResult } from "../../types"
 import type { CancellableContextOperationToken } from "../types"
 import type { useCancellableOperations } from "../useCancellableOperations"
@@ -94,6 +97,7 @@ export function useFullProjectScanActions(
 							fileCount: filteredFiles.length,
 							byteCount,
 							directories: buildDirectorySizeReport(filteredFiles),
+							largestFiles: largestScannedFiles(filteredFiles),
 						},
 						relativePaths: filteredFiles.map(file => file.relativePath),
 					},

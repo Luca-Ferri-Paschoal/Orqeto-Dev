@@ -5,6 +5,20 @@ fn build_candidates(
 	let target_names = candidate_target_names(manifest);
 	let target_file_name = match &manifest.kind {
 		ManifestKind::File { source_name, .. } => Some(source_name.as_str()),
+		ManifestKind::Zip { .. } if (2..=4).contains(&manifest.files.len()) => {
+			// Only look for a ZIP filename when exactly one declared ROOT file
+			// already exists. This gives a small incremental ZIP a real file
+			// anchor, instead of counting repeated directory names as routes.
+			let mut exact_files = manifest.files.iter().filter(|file| {
+				fs::symlink_metadata(root.join(&file.relative_path)).is_ok_and(|metadata| {
+					metadata.is_file() && !safe_fs::metadata_is_link_or_reparse(&metadata)
+				})
+			});
+			match (exact_files.next(), exact_files.next()) {
+				(Some(file), None) => file.relative_path.file_name().and_then(|name| name.to_str()),
+				_ => None,
+			}
+		},
 		_ => None,
 	};
 	let project_ignore = ProjectIgnore::load(root)?;
@@ -25,7 +39,12 @@ fn build_candidates(
 		manifest,
 		&project_ignore,
 		&discovery,
-	);
+	).or_else(|| unique_existing_zip_anchor_root_evidence(
+		root,
+		manifest,
+		&project_ignore,
+		&discovery,
+	));
 	let project_matches = &discovery.directory_matches;
 	let mut seeds = Vec::new();
 	seeds.push(CandidateSeed {

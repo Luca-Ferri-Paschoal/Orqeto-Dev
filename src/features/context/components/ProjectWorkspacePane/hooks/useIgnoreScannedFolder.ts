@@ -2,7 +2,7 @@ import { projectIgnoreOutcomeFromResult } from "../../../operationOutcome"
 import { createOperationOutcomeNotice } from "../../../operationOutcomeNotice"
 import {
 	isSafeIgnoreSuggestion,
-	MAX_CONTEXT_CONTENT_BYTES,
+	MIN_CONTEXT_DIAGNOSTIC_BYTES,
 } from "../../../projectContextSizeReport"
 import type { FullProjectContextSummary } from "../../../types"
 import type { ContextWorkspace } from "../../../useContextWorkspace"
@@ -41,9 +41,12 @@ export function useIgnoreScannedFolder({
 		const current = workspaceRef.current
 		if (current.rootFolder !== rootAtScan ||
 			current.fullProjectContextSummary !== summaryAtScan ||
-			summaryAtScan.byteCount <= MAX_CONTEXT_CONTENT_BYTES)
+			summaryAtScan.byteCount < MIN_CONTEXT_DIAGNOSTIC_BYTES)
 			return false
-		const knownPaths = new Set(summaryAtScan.directories.map(dir => dir.path))
+		const knownPaths = new Set([
+			...summaryAtScan.directories.map(dir => dir.path),
+			...(summaryAtScan.largestFiles ?? []).map(file => file.relativePath),
+		])
 		const paths = [...new Set(relativePaths)]
 		if (paths.length === 0 || paths.some(path => !isSafeIgnoreSuggestion(path) || !knownPaths.has(path)))
 			return false

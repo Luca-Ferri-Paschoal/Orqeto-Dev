@@ -2,9 +2,11 @@ import { formatByteSize } from "../../../formatGeneratedContent"
 import {
 	childrenOfDirectory,
 	largestOverBudgetFolders,
-	MAX_CONTEXT_CONTENT_BYTES,
+	MIN_CONTEXT_DIAGNOSTIC_BYTES,
 } from "../../../projectContextSizeReport"
 import type { FullProjectContextSummary } from "../../../types"
+import { ContextSizeFileList } from "./ContextSizeFileList"
+import { ContextSizeIntro } from "./ContextSizeIntro"
 import { ContextSizeRow } from "./ContextSizeRow"
 import {
 	type Locale,
@@ -51,10 +53,11 @@ export function ContextSizeInspector({
 		errorState.message :
 		""
 
-	if (summary === null || pathsOnly || summary.byteCount <= MAX_CONTEXT_CONTENT_BYTES || summary === dismissedSummary)
+	if (summary === null || pathsOnly || summary.byteCount < MIN_CONTEXT_DIAGNOSTIC_BYTES || summary === dismissedSummary)
 		return null
 
 	const directories = summary.directories
+	const largestFiles = summary.largestFiles ?? []
 	const path = openedForSummary === summary && directories.some(dir => dir.path === openedPath) ?
 		openedPath :
 		""
@@ -77,9 +80,11 @@ export function ContextSizeInspector({
 			path.lastIndexOf("/"),
 		) :
 		""
-	const validSelections = selectedPaths.filter(selected => directories.some(dir => dir.path === selected))
-	const selectedBytes = validSelections.reduce((sum, selected) =>
-		sum + (directories.find(dir => dir.path === selected)?.byteCount ?? 0), 0)
+	const validSelections = selectedPaths.filter(selected => directories.some(dir => dir.path === selected) || largestFiles.some(file => file.relativePath === selected))
+	const selectedBytes = validSelections.reduce((sum, selected) => sum + (
+		directories.find(dir => dir.path === selected)?.byteCount ??
+		largestFiles.find(file => file.relativePath === selected)?.sizeBytes ?? 0
+	), 0)
 	const remainingBytes = Math.max(
 		0,
 		summary.byteCount - selectedBytes,
@@ -140,67 +145,21 @@ export function ContextSizeInspector({
 			disabled={isSaving || disabled}
 			onCancel={() => setDismissedSummary(summary)}
 		>
-			<h2
-				id={titleId}
-				className="text-base font-bold"
-			>
-				{translate(
-					locale,
-					"folder.projectContext.sizeTitle",
-				)}
-			</h2>
-			<p className="mt-2 text-sm text-[var(--font-color-secondary)]">
-				{translate(
-					locale,
-					"folder.projectContext.sizeWarning",
-					{ size: formatByteSize(summary.byteCount) },
-				)}
-			</p>
-			<p className="mt-2 text-xs text-[var(--font-color-secondary)]">
-				{translate(
-					locale,
-					"folder.projectContext.sizeDialogHint",
-				)}
-			</p>
-			<div className="mt-3 flex items-center justify-between gap-2 text-xs">
-				<span className="min-w-0 break-all font-semibold">
-					{path ?
-						`${path}/` :
-						"./"}
-				</span>
-				{path && (
-					<button
-						type="button"
-						className="shrink-0 underline"
-						disabled={isSaving}
-						onClick={() => navigate(parentPath)}
-					>
-						{translate(
-							locale,
-							"folder.projectContext.sizeBack",
-						)}
-					</button>
-				)}
-			</div>
-			{!path && suggestions.length > 0 && (
-				<button
-					type="button"
-					className="mt-2 text-xs underline"
-					disabled={isSaving}
-					onClick={() => {
-						setOpenedForSummary(summary)
-						setShowDirectoryTree(previous => !previous)
-						setShowAll(false)
-					}}
-				>
-					{translate(
-						locale,
-						openedForSummary === summary && showDirectoryTree ?
-							"folder.projectContext.sizeSuggestions" :
-							"folder.projectContext.sizeAllFolders",
-					)}
-				</button>
-			)}
+			<ContextSizeIntro
+				titleId={titleId}
+				locale={locale}
+				byteCount={summary.byteCount}
+				path={path}
+				hasSuggestions={suggestions.length > 0}
+				showDirectoryTree={openedForSummary === summary && showDirectoryTree}
+				disabled={isSaving}
+				onBack={() => navigate(parentPath)}
+				onToggleDirectoryTree={() => {
+					setOpenedForSummary(summary)
+					setShowDirectoryTree(previous => !previous)
+					setShowAll(false)
+				}}
+			/>
 			<ul
 				className="mt-2 max-h-[45vh] space-y-1 overflow-auto"
 				aria-label={translate(
@@ -235,7 +194,16 @@ export function ContextSizeInspector({
 					)}
 				</button>
 			)}
-			{children.length === 0 && (
+			{!path && (
+				<ContextSizeFileList
+					files={largestFiles}
+					selectedPaths={validSelections}
+					disabled={disabled || isSaving}
+					locale={locale}
+					onSelect={togglePath}
+				/>
+			)}
+			{children.length === 0 && largestFiles.length === 0 && (
 				<p className="mt-2 text-xs text-[var(--font-color-secondary)]">
 					{translate(
 						locale,

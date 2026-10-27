@@ -97,7 +97,10 @@ fn prepare_overlay_manifest(
 		}
 	}
 
-	let candidate_count = if candidate_build.validation_limit_exceeded {
+	// When a full-hierarchy certificate selected ROOT, the discarded discovery
+	// seeds are unvalidated search attempts, not distinct plausible destinations.
+	// Keep the conservative overflow count for cases without such a proof.
+	let candidate_count = if candidate_build.validation_limit_exceeded && !multi_root_certified {
 		candidate_build.discovered_seed_count.max(candidates.len())
 	} else {
 		candidates.len()

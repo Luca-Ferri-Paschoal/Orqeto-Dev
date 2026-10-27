@@ -3,7 +3,9 @@ import {
 	childrenOfDirectory,
 	isSafeIgnoreSuggestion,
 	largestOverBudgetFolders,
+	largestScannedFiles,
 	MAX_CONTEXT_CONTENT_BYTES,
+	MIN_CONTEXT_DIAGNOSTIC_BYTES,
 } from "../../src/features/context/projectContextSizeReport.ts"
 import { strict as assert } from "node:assert"
 import { test } from "node:test"
@@ -148,4 +150,39 @@ void test("Oversized nested dependency folders are suggested directly, without r
 		"apps/api/node_modules/a",
 		"packages/vendor",
 	])
+})
+
+void test("Below-budget scans still provide largest generated files for review", () => {
+	const files = [
+		{ relativePath: "./apps/mobile/android/app/.cxx/debug/build.ninja", sizeBytes: 38 * 1024 * 1024 },
+		{ relativePath: "./apps/mobile/android/build/reports/problems.html", sizeBytes: 25 * 1024 * 1024 },
+		{ relativePath: "./src/main.ts", sizeBytes: 10 * 1024 },
+	]
+	const firstFile = files[0]
+	assert.ok(firstFile)
+	assert.ok(firstFile.sizeBytes < MAX_CONTEXT_CONTENT_BYTES)
+	assert.ok(firstFile.sizeBytes > MIN_CONTEXT_DIAGNOSTIC_BYTES)
+	assert.deepEqual(largestScannedFiles(files).map(file => file.relativePath), [
+		"apps/mobile/android/app/.cxx/debug/build.ninja",
+		"apps/mobile/android/build/reports/problems.html",
+		"src/main.ts",
+	])
+})
+
+void test("Largest file diagnostics are safe and bounded", () => {
+	const files = Array.from({ length: 100 }, (_, index) => ({
+		relativePath: `./generated/file-${index}.bin`,
+		sizeBytes: index + 1,
+	}))
+	files.push({ relativePath: "./../outside/secret.bin", sizeBytes: 1_000_000 })
+	const found = largestScannedFiles(files)
+	assert.equal(
+		found.length,
+		30,
+	)
+	assert.equal(
+		found[0]?.sizeBytes,
+		100,
+	)
+	assert.ok(found.every(file => isSafeIgnoreSuggestion(file.relativePath)))
 })

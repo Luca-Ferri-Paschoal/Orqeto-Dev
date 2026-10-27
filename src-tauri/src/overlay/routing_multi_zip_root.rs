@@ -112,3 +112,60 @@ fn coherent_new_zip_subtree_root_evidence(
         })
     }))
 }
+
+// An incremental ZIP can update one deeply nested file and introduce a few
+// siblings. The exact, unique existing filename plus the entire established
+// parent chain certifies ROOT; repeated names of intermediate directories do
+// not constitute alternative file destinations.
+fn unique_existing_zip_anchor_root_evidence(
+    root: &Path,
+    manifest: &OverlayManifest,
+    project_ignore: &ProjectIgnore,
+    discovery: &ProjectRoutingDiscovery,
+) -> Option<bool> {
+    if !matches!(&manifest.kind, ManifestKind::Zip { .. }) ||
+        !(2..=4).contains(&manifest.files.len()) ||
+        !manifest.delete_paths.is_empty() ||
+        !manifest.delete_directories.is_empty() ||
+        !manifest.permanent_delete_directories.is_empty()
+    {
+        return None;
+    }
+
+    let mut common_parent = None::<&Path>;
+    let mut existing_file = None::<&Path>;
+    let mut new_files = 0_usize;
+    for file in &manifest.files {
+        let parent = file.relative_path.parent()?;
+        let depth = normal_components(parent).len();
+        // Generic src/components or docs/ folders cannot certify ownership.
+        if depth < 4 || common_parent.is_some_and(|previous| previous != parent) ||
+            count_existing_directory_depth(root, Path::new(""), &file.relative_path, project_ignore) != depth
+        {
+            return None;
+        }
+        common_parent = Some(parent);
+        let destination = root.join(&file.relative_path);
+        match fs::symlink_metadata(&destination) {
+            Ok(metadata) if metadata.is_file() &&
+                !safe_fs::metadata_is_link_or_reparse(&metadata) &&
+                !project_ignore.is_ignored(&destination, false) => {
+                    if existing_file.replace(file.relative_path.as_path()).is_some() {
+                        return None;
+                    }
+                },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => new_files += 1,
+            _ => return None,
+        }
+    }
+    let existing_file = existing_file?;
+    if new_files == 0 {
+        return None;
+    }
+
+    // Discovery excludes ignored entries and reparse points. Another file
+    // with the exact same basename remains a real uncertainty, even when
+    // a deep path looks promising. Never infer unique file identity from
+    // many coincidental directory matches.
+    Some(discovery.file_matches.len() == 1 && discovery.file_matches[0].as_path() == existing_file)
+}
